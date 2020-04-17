@@ -180,7 +180,6 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
   t0 = time()
   t1 = None
 
-  synth.last_pitch = next(pitchz, 50)
   def nextPitch():
     try: return next(pitchz)
     except StopIteration: raise NonlocalReturn("done")
@@ -198,13 +197,12 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
       key = chr(event.key)
       if key == 'a':
         t1 = time()
-        synth.noteon(synth.last_pitch)
-      elif key == 's': doSplit(); giveSegment()
+        doSplit()
+      elif key == 's': giveSegment(); doSplit()
     elif event.type == pygame.KEYUP:
       key = chr(event.key)
       if key == 'a':
         synth.noteoff()
-        synth.last_pitch = nextPitch()
         giveSegment()
       elif key == ' ': onPausePlay()
 
