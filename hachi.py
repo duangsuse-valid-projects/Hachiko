@@ -30,7 +30,8 @@ def readOctave(octa):
   return OCTAVE_NAMES.index(octave)*OCTAVE_MAX_VALUE + int(n)
 
 
-app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline")
+app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
+    epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-play", type=str, default=None, help="music file used")
 app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file")
@@ -54,12 +55,6 @@ class RecordKeys(Fold):
       expr = input("list> ")
       if expr != "": self.notes = eval(expr)
 
-class AsList(Fold):
-  def __init__(self):
-    self.items = []
-  def accept(self, value):
-    self.items.append(value)
-  def finish(self): return self.items
 
 from datetime import timedelta
 from srt import Subtitle, compose
@@ -93,7 +88,7 @@ def gameCenterText(text, cx=0.5, cy=0.5):
 
 playDuration = [0.3, 0.5]
 
-def guiReadPitches(note_base, reducer, caption = "Add Pitches", onKey = lambda ctx, k: ()):
+def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
   gameWindow(caption, WINDOW_DIMEN)
 
   synth = NoteSynth(sampleRate)
@@ -107,17 +102,17 @@ def guiReadPitches(note_base, reducer, caption = "Add Pitches", onKey = lambda c
 
   ctx = RefUpdate("Ready~!")
   intro = ctx.slides(1.5, f"0={dumpOctave(note_base)}", "[P] proceed",
-                     "[-=] slide pitch", "[R]replay [K]bulk entry", "Have Fun!")
+      "[-=] slide pitch", "[R]replay [K]bulk entry", "Have Fun!")
 
-  def base_slide(n):
+  def baseSlide(n):
     nonlocal note_base
     note_base += n
     playSec(playDuration[0], note_base)
     ctx.show(dumpOctave(note_base))
   def defaultOnKey(k):
     if k == 'q': raise SystemExit()
-    elif k == '-': base_slide(-10)
-    elif k == '=': base_slide(+10)
+    elif k == '-': baseSlide(-10)
+    elif k == '=': baseSlide(+10)
     elif k == 'p': raise NonlocalReturn("proceed")
     elif k == '\r':
       intro[0].cancel()
@@ -156,14 +151,6 @@ def guiReadPitches(note_base, reducer, caption = "Add Pitches", onKey = lambda c
       if exc.value == "proceed": break
   synth.release()
   return reducer.finish()
-
-class CallFlag:
-  def __init__(self, op, op1):
-    self.flag = False
-    self.op, self.op1 = op, op1
-  def __call__(self):
-    self.op() if self.flag else self.op1()
-    self.flag = not self.flag
 
 def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
   mus = pygame.mixer_music
