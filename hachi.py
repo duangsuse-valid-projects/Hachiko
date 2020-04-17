@@ -33,7 +33,6 @@ def readOctave(octa):
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-play", type=str, default=None, help="music file used")
-app.add_argument("-use-hot", default=False, action="store_true", help="make key A and key S associated")
 
 class RecordKeys(Fold):
   def __init__(self):
@@ -73,7 +72,7 @@ def main(args):
   pygame.init()
   rkeys = RecordKeys()
   pitches = guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
-  srt = guiReadTimeline(iter(pitches), AsSrt(), play=cfg.play, mode="hot" if cfg.use_hot else "normal")
+  srt = guiReadTimeline(iter(pitches), AsSrt(), play=cfg.play)
   print(srt)
 
 def gameWindow(caption, dimen):
@@ -163,10 +162,9 @@ class CallFlag:
     self.op() if self.flag else self.op1()
     self.flag = not self.flag
 
-def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Add Timeline"):
+def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
   mus = pygame.mixer_music
   gameWindow(caption, WINDOW_DIMEN)
-  is_hot = mode == "hot"
   if play != None:
     mus.load(play)
     mus.play()
@@ -176,7 +174,7 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
   synth.start()
 
   onPausePlay = CallFlag(mus.unpause, mus.pause)
-  gameCenterText("[A]split" if is_hot else "[A]keep [S]split")
+  gameCenterText("[A]keep [S]split")
   t0 = time()
   t1 = None
 
@@ -205,7 +203,7 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
         synth.noteoff()
         synth.last_pitch = nextPitch()
         giveSegment()
-      elif key == 's' and not is_hot: doSplit(); giveSegment()
+      elif key == 's': doSplit(); giveSegment()
       elif key == ' ': onPausePlay()
 
     elif event.type == pygame.QUIT: raise SystemExit()
