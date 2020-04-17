@@ -154,6 +154,7 @@ def guiReadPitches(note_base, reducer, caption = "Add Pitches", onKey = lambda c
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn as exc:
       if exc.value == "proceed": break
+  synth.release()
   return reducer.finish()
 
 class CallFlag:
@@ -211,6 +212,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
     try:
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn: break
+  synth.release()
   return reducer.finish()
 
 from sys import argv

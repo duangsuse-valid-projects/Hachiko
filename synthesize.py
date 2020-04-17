@@ -27,7 +27,7 @@ class Synth:
       b"synth.sample-rate": samplerate,
       b"synth.midi-channels": channels }.items(): self.setting(k, v)
     self.audio_driver = None
-  def __del__(self):
+  def release(self):
     delete_fluid_synth(self.synth)
     delete_fluid_settings(self.settings)
     if self.audio_driver != None: delete_fluid_audio_driver(self.audio_driver)

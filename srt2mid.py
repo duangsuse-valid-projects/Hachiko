@@ -10,7 +10,7 @@ def transform(srts):
   out.tracks.append(track)
 
   timeof = lambda dt: int(dt.total_seconds()*1000)
-  t0 = timeof(srts[0].start)
+  t0 = 0
   for srt in srts:
     note = int(srt.content)
     t1 = timeof(srt.start)
@@ -27,7 +27,7 @@ def main(args):
     return
   for path in args:
     with open(path, "r") as srtf:
-      srts = list(srt.parse(srtf.read()))
+      srts = srt.parse(srtf.read())
       transform(srts).save(path.rsplit(".")[0] + ".mid")
 
 from sys import argv
