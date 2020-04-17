@@ -3,14 +3,13 @@
 
 from argparse import ArgumentParser
 from time import time
-from threading import Timer
 
 import pygame
 from synthesize import NoteSynth
+from hachitools import *
 
 WINDOW_DIMEN = (300,300)
 
-def grayColor(n): return (n,n,n)
 backgroundColor = grayColor(0x30)
 textColor = grayColor(0xfa)
 fontSize = 36
@@ -30,45 +29,6 @@ def readOctave(octa):
   octave, n = octa.rstrip("b").split("_")
   return OCTAVE_NAMES.index(octave)*OCTAVE_MAX_VALUE + int(n)
 
-def timeout(n_sec, op):
-  timer = Timer(n_sec, op); timer.start()
-  return timer
-
-class NonlocalReturn(Exception):
-  def __init__(self, value):
-    super().__init__(value)
-  @property
-  def value(self): return self.args[0]
-
-class Fold:
-  def __init__(self): pass
-  def accept(self, value): pass
-  def finish(self): pass
-
-class RefUpdate:
-  def __init__(self, initial = ""):
-    self._text = initial; self.last_text = None
-  @property
-  def text(self): return self._text
-  def update(self): self.last_text = self._text
-
-  def show(self, text):
-    self.update()
-    self._text = text
-  def hasUpdate(self):
-    has_upd = self.last_text != self.text
-    self.update()
-    return has_upd
-  def slides(self, n_sec, *texts):
-    stream = iter(texts)
-    def showNext():
-      nonlocal timeouts
-      try:
-        self.show(next(stream))
-        timeouts[0] = timeout(n_sec, showNext)
-      except StopIteration: pass
-    timeouts = [timeout(n_sec, showNext )]
-    return timeouts
 
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
@@ -83,8 +43,9 @@ class RecordKeys(Fold):
   def finish(self): return self.notes
   def actions(self, ctx, k):
     if k == '\x08': #<key delete
+      if len(self.notes) == 0: return
       rm = self.notes.pop()
-      ctx.show(f"~{rm} #{len(self.notes)}")
+      ctx.show(f"!~{rm} #{len(self.notes)}")
     elif k == 'r':
       print(self.notes)
       n = int(input("n?> ") or len(self.notes))
@@ -93,16 +54,46 @@ class RecordKeys(Fold):
       expr = input("list> ")
       if expr != "": self.notes = eval(expr)
 
+class AsList(Fold):
+  def __init__(self):
+    self.items = []
+  def accept(self, value):
+    self.items.append(value)
+  def finish(self): return self.items
+
+from datetime import timedelta
+from srt import Subtitle, compose
+class AsSrt(AsList):
+  def finish(self):
+    td = lambda s: timedelta(seconds=s)
+    return compose([Subtitle(i+1, td(p[0]), td(p[1]), str(p[2])) for (i, p) in enumerate(self.items)])
+
 def main(args):
   cfg = app.parse_args(args)
-  rkeys = RecordKeys()
-  pitches = guiReadPitches(cfg.note_base, rkeys, "Add Pitches", rkeys.actions)
-
-
-def guiReadPitches(note_base, reducer, caption, onKey = lambda ctx, k: ()):
   pygame.init()
-  pygame.display.set_mode(WINDOW_DIMEN)
+  rkeys = RecordKeys()
+  pitches = guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
+  srt = guiReadTimeline(iter(pitches), AsSrt(), play=cfg.play, mode="hot" if cfg.use_hot else "normal")
+  print(srt)
+
+def gameWindow(caption, dimen):
   pygame.display.set_caption(caption)
+  pygame.display.set_mode(dimen)
+
+def gameCenterText(text, cx=0.5, cy=0.5):
+  bg = pygame.display.get_surface()
+  bg.fill(backgroundColor)
+
+  font = pygame.font.Font(None, fontSize)
+  rtext = font.render(text, 1, textColor)
+  textpos = rtext.get_rect(centerx=bg.get_width()*cx, centery=bg.get_height()*cy)
+  bg.blit(rtext, textpos)
+  pygame.display.flip()
+
+playDuration = [0.3, 0.5]
+
+def guiReadPitches(note_base, reducer, caption = "Add Pitches", onKey = lambda ctx, k: ()):
+  gameWindow(caption, WINDOW_DIMEN)
 
   synth = NoteSynth(sampleRate)
   def playSec(n_sec, pitch):
@@ -111,15 +102,16 @@ def guiReadPitches(note_base, reducer, caption, onKey = lambda ctx, k: ()):
 
   synth.setFont(INSTRUMENT_SF2)
   synth.start()
-  playSec(0.5, note_base)
+  playSec(playDuration[1], note_base)
 
   ctx = RefUpdate("Ready~!")
-  intro = ctx.slides(1.5, f"0={dumpOctave(note_base)}", "[P] proceed", "[-=] slide pitch", "Have Fun!")
+  intro = ctx.slides(1.5, f"0={dumpOctave(note_base)}", "[P] proceed",
+                     "[-=] slide pitch", "[R]replay [K]bulk entry", "Have Fun!")
 
   def base_slide(n):
     nonlocal note_base
     note_base += n
-    playSec(0.3, note_base)
+    playSec(playDuration[0], note_base)
     ctx.show(dumpOctave(note_base))
   def defaultOnKey(k):
     if k == 'q': raise SystemExit()
@@ -148,25 +140,75 @@ def guiReadPitches(note_base, reducer, caption, onKey = lambda ctx, k: ()):
       raise SystemExit()
 
   while True:
-    bg = pygame.display.get_surface()
-    bg.fill(backgroundColor)
-
     if pygame.font and ctx.hasUpdate():
       text = ctx.text
       if len(text) != 0 and text[0] == '!':
         cmd = text[1:]
         if cmd == "done": synth.noteoff()
+        elif cmd.startswith("~"): playSec(playDuration[0], int(cmd[1:].rsplit("#")[0]))
         else: synth.noteSwitch(int(cmd))
-      font = pygame.font.Font(None, fontSize)
-      rtext = font.render(text, 1, textColor)
-      textpos = rtext.get_rect(centerx=bg.get_width()/2, centery=bg.get_height()/2)
-      bg.blit(rtext, textpos)
-      pygame.display.flip()
+      gameCenterText(text)
 
     try:
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn as exc:
       if exc.value == "proceed": break
+  return reducer.finish()
+
+class CallFlag:
+  def __init__(self, op, op1):
+    self.flag = False
+    self.op, self.op1 = op, op1
+  def __call__(self):
+    self.op() if self.flag else self.op1()
+    self.flag = not self.flag
+
+def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Add Timeline"):
+  mus = pygame.mixer_music
+  gameWindow(caption, WINDOW_DIMEN)
+  is_hot = mode == "hot"
+  if play != None:
+    mus.load(play)
+    mus.play()
+
+  synth = NoteSynth(sampleRate)
+  synth.setFont(INSTRUMENT_SF2)
+  synth.start()
+
+  onPausePlay = CallFlag(mus.unpause, mus.pause)
+  gameCenterText("[A]keep [S]split")
+  t0 = time()
+  t1 = None
+  def giveSegment():
+    nonlocal t1
+    t2 = time()
+    reducer.accept( (t1-t0, t2-t0, synth.last_pitch) )
+    t1 = t2 #< new start
+  synth.last_pitch = 0 if is_hot else next(pitchz, 50) #< hot: (key A) will load first pitch
+  def doSplit():
+    try: synth.noteSwitch(next(pitchz))
+    except StopIteration: raise NonlocalReturn("done")
+  def onEvent(event):
+    nonlocal t1
+    if event.type == pygame.KEYDOWN:
+      key = chr(event.key)
+      if key == 'a':
+        t1 = time()
+        if is_hot: doSplit()
+        else: synth.noteon(synth.last_pitch)
+    elif event.type == pygame.KEYUP:
+      key = chr(event.key)
+      if key == ' ': onPausePlay()
+      elif key == 'a':
+        synth.noteoff()
+        giveSegment()
+      elif key == 's': doSplit(); giveSegment()
+
+    elif event.type == pygame.QUIT: raise SystemExit()
+  while True:
+    try:
+      for event in pygame.event.get(): onEvent(event)
+    except NonlocalReturn: break
   return reducer.finish()
 
 from sys import argv
