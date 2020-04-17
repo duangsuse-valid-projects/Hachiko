@@ -176,7 +176,7 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
   synth.start()
 
   onPausePlay = CallFlag(mus.unpause, mus.pause)
-  gameCenterText("[A]keep [S]split")
+  gameCenterText("[A]split" if is_hot else "[A]keep [S]split")
   t0 = time()
   t1 = None
   def giveSegment():
@@ -184,10 +184,13 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
     t2 = time()
     reducer.accept( (t1-t0, t2-t0, synth.last_pitch) )
     t1 = t2 #< new start
+
   synth.last_pitch = 0 if is_hot else next(pitchz, 50) #< hot: (key A) will load first pitch
-  def doSplit():
-    try: synth.noteSwitch(next(pitchz))
+  def nextPitch():
+    try: return next(pitchz)
     except StopIteration: raise NonlocalReturn("done")
+  def doSplit(): synth.noteSwitch(nextPitch())
+
   def onEvent(event):
     nonlocal t1
     if event.type == pygame.KEYDOWN:
@@ -202,7 +205,8 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
       elif key == 'a':
         synth.noteoff()
         giveSegment()
-      elif key == 's': doSplit(); giveSegment()
+        if not is_hot: synth.last_pitch = nextPitch()
+      elif key == 's' and not is_hot: doSplit(); giveSegment()
 
     elif event.type == pygame.QUIT: raise SystemExit()
   while True:
