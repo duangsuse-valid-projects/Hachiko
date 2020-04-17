@@ -113,7 +113,9 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     if k == 'q': raise SystemExit()
     elif k == '-': baseSlide(-10)
     elif k == '=': baseSlide(+10)
-    elif k == 'p': raise NonlocalReturn("proceed")
+    elif k == 'p':
+      intro[0].cancel()
+      raise NonlocalReturn("proceed")
     elif k == '\r':
       intro[0].cancel()
       try: reducer.accept(readOctave(ctx.text))
