@@ -179,17 +179,18 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
   gameCenterText("[A]split" if is_hot else "[A]keep [S]split")
   t0 = time()
   t1 = None
+
+  synth.last_pitch = next(pitchz, 50)
+  def nextPitch():
+    try: return next(pitchz)
+    except StopIteration: raise NonlocalReturn("done")
+  def doSplit():
+    synth.noteSwitch(nextPitch())
   def giveSegment():
     nonlocal t1
     t2 = time()
     reducer.accept( (t1-t0, t2-t0, synth.last_pitch) )
     t1 = t2 #< new start
-
-  synth.last_pitch = 0 if is_hot else next(pitchz, 50) #< hot: (key A) will load first pitch
-  def nextPitch():
-    try: return next(pitchz)
-    except StopIteration: raise NonlocalReturn("done")
-  def doSplit(): synth.noteSwitch(nextPitch())
 
   def onEvent(event):
     nonlocal t1
@@ -197,16 +198,15 @@ def guiReadTimeline(pitchz, reducer, play = None, mode = "normal", caption = "Ad
       key = chr(event.key)
       if key == 'a':
         t1 = time()
-        if is_hot: doSplit()
-        else: synth.noteon(synth.last_pitch)
+        synth.noteon(synth.last_pitch)
     elif event.type == pygame.KEYUP:
       key = chr(event.key)
-      if key == ' ': onPausePlay()
-      elif key == 'a':
+      if key == 'a':
         synth.noteoff()
+        synth.last_pitch = nextPitch()
         giveSegment()
-        if not is_hot: synth.last_pitch = nextPitch()
       elif key == 's' and not is_hot: doSplit(); giveSegment()
+      elif key == ' ': onPausePlay()
 
     elif event.type == pygame.QUIT: raise SystemExit()
   while True:
