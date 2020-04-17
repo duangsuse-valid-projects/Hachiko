@@ -33,6 +33,7 @@ def readOctave(octa):
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-play", type=str, default=None, help="music file used")
+app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file")
 
 class RecordKeys(Fold):
   def __init__(self):
@@ -73,7 +74,8 @@ def main(args):
   rkeys = RecordKeys()
   pitches = guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
   srt = guiReadTimeline(iter(pitches), AsSrt(), play=cfg.play)
-  print(srt)
+  with open(cfg.o, "w+", encoding="utf-8") as srtf:
+    srtf.write(srt)
 
 def gameWindow(caption, dimen):
   pygame.display.set_caption(caption)
@@ -197,13 +199,13 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
       if key == 'a':
         t1 = time()
         synth.noteon(synth.last_pitch)
+      elif key == 's': doSplit(); giveSegment()
     elif event.type == pygame.KEYUP:
       key = chr(event.key)
       if key == 'a':
         synth.noteoff()
         synth.last_pitch = nextPitch()
         giveSegment()
-      elif key == 's': doSplit(); giveSegment()
       elif key == ' ': onPausePlay()
 
     elif event.type == pygame.QUIT: raise SystemExit()
