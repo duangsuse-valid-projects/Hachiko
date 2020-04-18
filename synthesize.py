@@ -27,10 +27,10 @@ class Synth:
       b"synth.sample-rate": samplerate,
       b"synth.midi-channels": channels }.items(): self.setting(k, v)
     self.audio_driver = None
-  def release(self):
+  def __del__(self):
+    if self.audio_driver != None: delete_fluid_audio_driver(self.audio_driver)
     delete_fluid_synth(self.synth)
     delete_fluid_settings(self.settings)
-    if self.audio_driver != None: delete_fluid_audio_driver(self.audio_driver)
 
   def setting(self, key, value):
     bk = key.encode() if isinstance(key, str) else key

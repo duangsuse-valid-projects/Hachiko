@@ -151,7 +151,6 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn as exc:
       if exc.value == "proceed": break
-  synth.release()
   return reducer.finish()
 
 def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
@@ -201,7 +200,6 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
     try:
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn: break
-  synth.release()
   return reducer.finish()
 
 from sys import argv
