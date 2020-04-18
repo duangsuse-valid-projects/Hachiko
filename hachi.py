@@ -14,6 +14,8 @@ backgroundColor = grayColor(0x30)
 textColor = grayColor(0xfa)
 fontSize = 36
 
+playDuration = [0.3, 0.5]
+
 INSTRUMENT_SF2 = "instrument.sf2"
 sampleRate = 44100
 
@@ -48,9 +50,9 @@ class RecordKeys(Fold):
       rm = self.notes.pop()
       ctx.show(f"!~{rm} #{len(self.notes)}")
     elif k == 'r':
-      print(self.notes)
+      print(repr(self.notes))
       n = int(input("n?> ") or len(self.notes))
-      ctx.slides(0.5, *map(lambda i: f"!{i}", self.notes[-n:]), "!done")
+      ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.notes[-n:]), "!done")
     elif k == 'k':
       expr = input("list> ")
       if expr != "": self.notes = eval(expr)
@@ -72,6 +74,7 @@ def main(args):
   with open(cfg.o, "w+", encoding="utf-8") as srtf:
     srtf.write(srt)
 
+
 def gameWindow(caption, dimen):
   pygame.display.set_caption(caption)
   pygame.display.set_mode(dimen)
@@ -86,7 +89,6 @@ def gameCenterText(text, cx=0.5, cy=0.5):
   bg.blit(rtext, textpos)
   pygame.display.flip()
 
-playDuration = [0.3, 0.5]
 
 def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
   gameWindow(caption, WINDOW_DIMEN)
@@ -153,6 +155,20 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
       if exc.value == "proceed": break
   return reducer.finish()
 
+class CallFlagTimed(CallFlag):
+  def __init__(self, op, op1):
+    super().__init__(op, op1)
+    self.t0 = time()
+  def __call__(self):
+    if self.flag:
+      return super().__call__()
+    else: #v resuming
+      super().__call__()
+      t0 = self.t0
+      t1 = time()
+      self.t0 = t1
+      return t1 - t0
+
 def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
   mus = pygame.mixer_music
   gameWindow(caption, WINDOW_DIMEN)
@@ -164,7 +180,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
   synth.setFont(INSTRUMENT_SF2)
   synth.start()
 
-  onPausePlay = CallFlag(mus.unpause, mus.pause)
+  onPausePlay = CallFlagTimed(mus.unpause, mus.pause)
   gameCenterText("[A]keep [S]split")
   t0 = time()
   t1 = None
@@ -172,7 +188,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
   def nextPitch():
     try: return next(pitchz)
     except StopIteration: raise NonlocalReturn("done")
-  def doSplit():
+  def splitNote():
     synth.noteSwitch(nextPitch())
   def giveSegment():
     nonlocal t1
@@ -181,19 +197,21 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
     t1 = t2 #< new start
 
   def onEvent(event):
-    nonlocal t1
+    nonlocal t0, t1
     if event.type == pygame.KEYDOWN:
       key = chr(event.key)
       if key == 'a':
         t1 = time()
-        doSplit()
-      elif key == 's': giveSegment(); doSplit()
+        splitNote()
+      elif key == 's': giveSegment(); splitNote()
     elif event.type == pygame.KEYUP:
       key = chr(event.key)
       if key == 'a':
         synth.noteoff()
         giveSegment()
-      elif key == ' ': onPausePlay()
+      elif key == ' ':
+        t = onPausePlay()
+        if t != None: t0 += t
 
     elif event.type == pygame.QUIT: raise SystemExit()
   while True:
