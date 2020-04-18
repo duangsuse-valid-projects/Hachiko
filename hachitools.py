@@ -1,5 +1,7 @@
 from threading import Timer
 
+SEC_MS = 1000
+
 def grayColor(n): return (n,n,n)
 
 def timeout(n_sec, op):

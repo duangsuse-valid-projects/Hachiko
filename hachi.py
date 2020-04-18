@@ -169,8 +169,8 @@ class CallFlagTimed(CallFlag):
       self.t0 = t1
       return t1 - t0
 
-def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
-  mus = pygame.mixer_music
+def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek = 5.0):
+  mus = pygame.mixer_music; mus_t0 = time()
   gameWindow(caption, WINDOW_DIMEN)
   if play != None:
     mus.load(play)
@@ -197,7 +197,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
     t1 = t2 #< new start
 
   def onEvent(event):
-    nonlocal t0, t1
+    nonlocal t0, t1, mus_t0
     if event.type == pygame.KEYDOWN:
       key = chr(event.key)
       if key == 'a':
@@ -212,6 +212,14 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline"):
       elif key == ' ':
         t = onPausePlay()
         if t != None: t0 += t
+      elif key == 'ē': # Arrow-Right
+        if mus.get_pos() == (-1): return
+        pos = time() - mus_t0 #< pygame mixer_music.get_pos does not follow set_pos
+        newpos = pos+seek
+        print("+@", pos, newpos)
+        mus.set_pos(newpos)
+        mus_t0 -= seek
+        t0 -= seek
 
     elif event.type == pygame.QUIT: raise SystemExit()
   while True:
