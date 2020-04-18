@@ -1,5 +1,9 @@
 # Hachiko
 
+<div align="center">
+<img alt="Hachiko" src="Hachiko.png"></img>
+</div>
+
 Simple tool for creating pitch timeline, this program divides midi creation into `pitches` and `timeline` part.
 
 When creating timeline, press <kbd>A</kbd> to give position/duration information, and use <kbd>S</kbd> to split different notes directly when holding <kbd>A</kbd>
@@ -10,6 +14,8 @@ When creating timeline, press <kbd>A</kbd> to give position/duration information
 ```
 
 > Tip: press <kbd>K</kbd> in pitch window, and input code in console (__it's recommended to launch this application in console__)
+
+The name of the project is *Hachiko*, inspired by the golden yellow Akita dog - ハチ公, which is in homophonic with "扒公" (means melody extraction "耳 Copy" or "扒谱").
 
 ## Installing
 
@@ -32,4 +38,6 @@ python3 hachi.py -h
 
 > NOTE: For the first time using GUI, you can spend more time learning hot keys
 
-Once `puzi.srt` is generated, you can use `python3 srt2mid.py puzi.srt` to transform it into MIDI file.
+Once `puzi.srt` is generated, you can use `python srt2mid.py puzi.srt` to transform it into MIDI file
+
+Btw, you can use pitches from extrenal tool (like [Synthesizer V](https://synthesizerv.com) editor) extracted by `python midnotes.py puzi.mid` instead of built-in approach
