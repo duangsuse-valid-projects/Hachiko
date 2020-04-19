@@ -48,7 +48,7 @@ class RefUpdate:
         self.show(next(stream))
         timeouts[0] = timeout(n_sec, showNext)
       except StopIteration: pass
-    timeouts = [timeout(n_sec, showNext )]
+    timeouts = [timeout(n_sec, showNext)]
     return timeouts
 
 class CallFlag:

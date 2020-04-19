@@ -8,13 +8,15 @@ import pygame
 from synthesize import NoteSynth
 from hachitools import *
 
+from json import dumps, loads
+
 WINDOW_DIMEN = (300,300)
 
 backgroundColor = grayColor(0x30)
 textColor = grayColor(0xfa)
 fontSize = 36
 
-playDuration = [0.3, 0.5]
+playDuration = [0.3, 0.5, 1.5]
 
 INSTRUMENT_SF2 = "instrument.sf2"
 sampleRate = 44100
@@ -38,24 +40,19 @@ app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-play", type=str, default=None, help="music file used")
 app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file")
 
-class RecordKeys(Fold):
-  def __init__(self):
-    self.notes = []
-  def accept(self, value):
-    self.notes.append(value)
-  def finish(self): return self.notes
+class RecordKeys(AsList):
   def actions(self, ctx, k):
     if k == '\x08': #<key delete
-      if len(self.notes) == 0: return
-      rm = self.notes.pop()
-      ctx.show(f"!~{rm} #{len(self.notes)}")
+      if len(self.items) == 0: return
+      rm = self.items.pop()
+      ctx.show(f"!~{rm} #{len(self.items)}")
     elif k == 'r':
-      print(repr(self.notes))
-      n = int(input("n?> ") or len(self.notes))
-      ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.notes[-n:]), "!done")
+      print(dumps(self.items))
+      n = int(input("n?> ") or len(self.items))
+      ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
     elif k == 'k':
       expr = input("list> ")
-      if expr != "": self.notes = eval(expr)
+      if expr != "": self.items = loads(expr)
 
 
 from datetime import timedelta
@@ -103,7 +100,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
   playSec(playDuration[1], note_base)
 
   ctx = RefUpdate("Ready~!")
-  intro = ctx.slides(1.5, f"0={dumpOctave(note_base)}", "[P] proceed",
+  intro = ctx.slides(playDuration[2], f"0={dumpOctave(note_base)}", "[P] proceed",
       "[-=] slide pitch", "[R]replay [K]bulk entry", "Have Fun!")
 
   def baseSlide(n):
@@ -111,15 +108,14 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     note_base += n
     playSec(playDuration[0], note_base)
     ctx.show(dumpOctave(note_base))
+
   def defaultOnKey(k):
+    intro[0].cancel() #< stop intro anim
     if k == 'q': raise SystemExit()
     elif k == '-': baseSlide(-10)
     elif k == '=': baseSlide(+10)
-    elif k == 'p':
-      intro[0].cancel()
-      raise NonlocalReturn("proceed")
+    elif k == 'p': raise NonlocalReturn("proceed")
     elif k == '\r':
-      intro[0].cancel()
       try: reducer.accept(readOctave(ctx.text))
       except ValueError: ctx.show(":\\")
     else: onKey(ctx, k)
@@ -139,7 +135,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     elif event.type == pygame.QUIT:
       raise SystemExit()
 
-  while True:
+  while True: #v main logic
     if pygame.font and ctx.hasUpdate():
       text = ctx.text
       if len(text) != 0 and text[0] == '!':
