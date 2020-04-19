@@ -41,3 +41,5 @@ python3 hachi.py -h
 Once `puzi.srt` is generated, you can use `python srt2mid.py puzi.srt` to transform it into MIDI file
 
 Btw, you can use pitches from extrenal tool (like [Synthesizer V](https://synthesizerv.com) editor) extracted by `python midnotes.py puzi.mid` instead of built-in approach
+
+Btw, there's also an option to use [MELODIA Algorithm](https://github.com/duangsuse-valid-projects/audio_to_midi_melodia) to extract pitches directly from music
