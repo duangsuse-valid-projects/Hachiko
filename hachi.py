@@ -1,7 +1,7 @@
 #!/bin/env python3
 # -*- coding: utf-8 -*-
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, FileType
 from time import time
 
 import pygame
@@ -37,7 +37,7 @@ def readOctave(octa):
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
     epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
-app.add_argument("-play", type=str, default=None, help="music file used")
+app.add_argument("-play", type=FileType("r"), default=None, help="music file used")
 app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file")
 
 class RecordKeys(AsList):
@@ -165,7 +165,7 @@ class CallFlagTimed(CallFlag):
       self.t0 = t1
       return t1 - t0
 
-def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek = 5.0):
+def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek = 5.0, d_volume = 0.1):
   mus = pygame.mixer_music; mus_t0 = time()
   gameWindow(caption, WINDOW_DIMEN)
   if play != None:
@@ -216,6 +216,10 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
         mus.set_pos(newpos)
         mus_t0 -= seek
         t0 -= seek
+      elif key == '-': # volume down
+        mus.set_volume(mus.get_volume() - d_volume)
+      elif key == '=': # volume up
+        mus.set_volume(mus.get_volume() + d_volume)
 
     elif event.type == pygame.QUIT: raise SystemExit()
   while True:
