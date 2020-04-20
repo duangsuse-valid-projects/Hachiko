@@ -20,6 +20,7 @@ playDuration = [0.3, 0.5, 1.5]
 
 INSTRUMENT_SF2 = "instrument.sf2"
 sampleRate = 44100
+sfontPreset = 0
 
 OCTAVE_NAMES = ["C","Cs","D","Ds","E","F","Fs","G","Gs","A","As","B"]
 OCTAVE_MAX_VALUE = 12
@@ -37,8 +38,9 @@ def readOctave(octa):
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
     epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
-app.add_argument("-play", type=FileType("r"), default=None, help="music file used")
-app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file")
+app.add_argument("-note-preset", type=int, default=0, help=f"SoundFont ({INSTRUMENT_SF2}) preset index, count from 0")
+app.add_argument("-play", type=FileType("r"), default=None, help="music file used for playing")
+app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path")
 
 class RecordKeys(AsList):
   def actions(self, ctx, k):
@@ -64,6 +66,7 @@ class AsSrt(AsList):
 
 def main(args):
   cfg = app.parse_args(args)
+  global sfontPreset; sfontPreset = cfg.note_preset
   pygame.init()
   rkeys = RecordKeys()
   pitches = guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
@@ -95,7 +98,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     synth.noteSwitch(pitch)
     timeout(n_sec, synth.noteoff)
 
-  synth.setFont(INSTRUMENT_SF2)
+  synth.setFont(INSTRUMENT_SF2, sfontPreset)
   synth.start()
   playSec(playDuration[1], note_base)
 
@@ -173,7 +176,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
     mus.play()
 
   synth = NoteSynth(sampleRate)
-  synth.setFont(INSTRUMENT_SF2)
+  synth.setFont(INSTRUMENT_SF2, sfontPreset)
   synth.start()
 
   onPausePlay = CallFlagTimed(mus.unpause, mus.pause)
