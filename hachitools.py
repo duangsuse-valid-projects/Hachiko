@@ -1,8 +1,12 @@
 from threading import Timer
+from os import environ
 
 SEC_MS = 1000
 
 def grayColor(n): return (n,n,n)
+
+def env(name, transform, default):
+  return transform(environ[name]) if name in environ else default
 
 def timeout(n_sec, op):
   timer = Timer(n_sec, op); timer.start()

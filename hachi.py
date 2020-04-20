@@ -10,16 +10,19 @@ from hachitools import *
 
 from json import dumps, loads
 
-WINDOW_DIMEN = (300,300)
+def splitAs(type, transform = int, delim = ","):
+  return lambda it: type(transform(s) for s in it.split(delim))
 
-backgroundColor = grayColor(0x30)
-textColor = grayColor(0xfa)
-fontSize = 36
+WINDOW_DIMEN = env("DIMEN", splitAs(tuple), (300,300))
 
-playDuration = [0.3, 0.5, 1.5]
+backgroundColor = grayColor(env("GRAY_BACK", int, 0x30))
+textColor = grayColor(env("GRAY_TEXT", int, 0xfa))
+fontSize = env("SIZE_FONT", int, 36)
 
-INSTRUMENT_SF2 = "instrument.sf2"
-sampleRate = 44100
+playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
+
+INSTRUMENT_SF2 = env("SFONT", str, "instrument.sf2")
+sampleRate = env("SAMPLE_RATE", int, 44100)
 sfontPreset = 0
 
 OCTAVE_NAMES = ["C","Cs","D","Ds","E","F","Fs","G","Gs","A","As","B"]
