@@ -70,6 +70,7 @@ class AsSrt(AsList):
 def main(args):
   cfg = app.parse_args(args)
   global sfontPreset; sfontPreset = cfg.note_preset
+  pygame.mixer.init(sampleRate)
   pygame.init()
   rkeys = RecordKeys()
   pitches = guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
