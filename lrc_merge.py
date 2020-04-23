@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 '''
-This tool can convert ungrouped lrc stream to List[LrcLine]
-LrcLine is Tuple[int, str] (seconds, content)
+This tool can convert ungrouped lrc stream to List[List[LrcNote]]
+LrcNote is Tuple[int, str] (seconds, content)
 
 Bad model: Lrc / LrcLines / Srt
 read: str -> Lrc; dump: LrcLines -> str;
@@ -14,7 +14,7 @@ PAT_LRC_ENTRY = compile(r"[\[<](\d{2}):(\d{2}).(\d{2})[>\]] ?([^<\n]*)")
 
 def readLrc(text):
   def readEntry(g): return (int(g[0])*60 + int(g[1]) + int(g[2]) / 100, g[3]) # [mm:ss.xx] content
-  return [readEntry(e) for e in PAT_LRC_ENTRY.findall(text)] 
+  return [readEntry(e) for e in PAT_LRC_ENTRY.findall(text)]
 
 def dumpLrc(lrc_lines):
   def header(t, surr="[]"): return "%s%02i:%02i.%02i%s" %(surr[0], t/60, t%60, t%1.0 * 100, surr[1])
@@ -45,10 +45,10 @@ def zipTakeWhile(predicate, xs):
       yield col
       col = []
     col.append(b)
-  yield col #< even match predicate
+  yield col #< even predicate matches
 
 from sys import argv
-TIME_SPAN  = 1.0 if len(argv) != 2 else int(argv[1])
+TIME_SPAN  = 1.0 if len(argv) != 2 else float(argv[1])
 print("== lyrics")
 inSameLine = lambda a, b: abs(a[0] - b[0]) < TIME_SPAN
 result = list(zipTakeWhile(inSameLine, data) )
