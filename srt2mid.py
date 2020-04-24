@@ -1,15 +1,20 @@
 #!/bin/env python3
 # -*- coding: utf-8 -*-
 
+from typing import List, Iterator, cast
+
 from datetime import timedelta
-import srt
+from srt import Subtitle, parse as srt_parse, compose as srt_compose
 from mido import Message, MidiFile, MidiTrack
 
 from sys import getdefaultencoding
+from os import environ
+
+SINGLE_TRACK = bool(environ.get("SINGLE_TRACK"))
 
 SEC_MS = 1000
 
-def transform(srts):
+def transform(srts:Iterator[Subtitle]) -> MidiFile:
   out = MidiFile()
   track = MidiTrack()
   out.tracks.append(track)
@@ -26,17 +31,17 @@ def transform(srts):
 
   return out
 
-def transformBack(notes: MidiTrack, is_lyrics):
+def transformBack(notez:Iterator[Message], is_lyrics:bool, k_time) -> List[Subtitle]:
   out = []
-  notez = iter(notes)
-  def read(ty):
+  def read(ty, blanks = ["set_tempo"]):
     note = next(notez)
     if note.type != ty:
       if note.type == "end_of_track": raise StopIteration("EOT")
-      else: raise ValueError(f"unexpected note near {note}, expecting {ty}")
+      while note.type in blanks: note = next(notez) #< jump off!
+      if note.type != ty: raise ValueError(f"unexpected note near {note}, expecting {ty}")
     return note
 
-  timeof = lambda n: timedelta(seconds=n/SEC_MS)
+  timeof = lambda n: timedelta(seconds=n/k_time)
   t_acc = timedelta(); lyric = None
   index = 1 #< for subtitles
   while True:
@@ -46,22 +51,24 @@ def transformBack(notes: MidiTrack, is_lyrics):
       t_on = timeof(lyric.time if is_lyrics else on.time)
       t_off = timeof(read("note_off").time)
     except StopIteration: break
-    out.append(srt.Subtitle(index, t_acc+t_on, t_acc+t_on+t_off, lyric.text if is_lyrics else str(on.note) ))
+    out.append(Subtitle(index, t_acc+t_on, t_acc+t_on+t_off, lyric.text if is_lyrics else str(on.note) ))
     t_acc += (t_on + t_off)
     index += 1
 
   return out
 
+
 def newPath(f, ext):
   return f.name.rsplit(".")[0] + f".{ext}"
 
 def backMidFile(f, is_lyrics):
-  track = max(MidiFile(f.name, charset=getdefaultencoding()).tracks, key=len)
-  srts = srt.compose(transformBack(track, is_lyrics))
-  with open(newPath(f, "srt"), "w+") as srtf: srtf.write(srts)
+  midi = MidiFile(f.name, charset=getdefaultencoding())
+  (notes, k_time) = (cast(MidiTrack, max(midi.tracks, key=len)), SEC_MS) if SINGLE_TRACK else (midi, 1)
+  text_srt = srt_compose(transformBack(iter(notes), is_lyrics, k_time))
+  with open(newPath(f, "srt"), "w+") as srtf: srtf.write(text_srt)
 
 modes = {
-  "from": lambda f: transform(srt.parse(f.read())).save(newPath(f, "mid")),
+  "from": lambda f: transform(srt_parse(f.read())).save(newPath(f, "mid")),
   "back": lambda f: backMidFile(f, False),
   "back-lyrics": lambda f: backMidFile(f, True)
 }
