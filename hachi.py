@@ -1,14 +1,20 @@
 #!/bin/env python3
 # -*- coding: utf-8 -*-
 
+from typing import Callable, TypeVar; T = TypeVar("T")
+
 from argparse import ArgumentParser, FileType
 from time import time
+from datetime import timedelta
+
+from srt import Subtitle, compose
+from json import dumps, loads
 
 import pygame
+
 from synthesize import NoteSynth
 from hachitools import *
 
-from json import dumps, loads
 
 def splitAs(type, transform = int, delim = ","):
   return lambda it: type(transform(s) for s in it.split(delim))
@@ -19,6 +25,7 @@ backgroundColor = grayColor(env("GRAY_BACK", int, 0x30))
 textColor = grayColor(env("GRAY_TEXT", int, 0xfa))
 fontSize = env("SIZE_FONT", int, 36)
 
+askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
 
 INSTRUMENT_SF2 = env("SFONT", str, "instrument.sf2")
@@ -37,6 +44,18 @@ def readOctave(octa):
   octave, n = octa.rstrip("b").split("_")
   return OCTAVE_NAMES.index(octave)*OCTAVE_MAX_VALUE + int(n)
 
+def blockingAsk(name:str, transform:Callable[[str],T], default:T) -> T:
+  if askMethod == "input":
+    answer = input(f"{name}?> ")
+    return transform(answer) if answer != "" else default
+  elif askMethod == "tk":
+    from tkinter import Tk
+    from tkinter.simpledialog import askstring
+    root = Tk()
+    answer = askstring("Ask Input", f"input {name}")
+    root.destroy()
+    return transform(answer) if answer != None else default
+  else: raise ValueError(f"unknown asking method {askMethod}")
 
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
     epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last")
@@ -44,6 +63,7 @@ app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-note-preset", type=int, default=0, help=f"SoundFont ({INSTRUMENT_SF2}) preset index, count from 0")
 app.add_argument("-play", type=FileType("r"), default=None, help="music file used for playing")
 app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path")
+
 
 class RecordKeys(AsList):
   def actions(self, ctx, k):
@@ -53,15 +73,14 @@ class RecordKeys(AsList):
       ctx.show(f"!~{rm} #{len(self.items)}")
     elif k == 'r':
       print(dumps(self.items))
-      n = int(input("n?> ") or len(self.items))
+      n = blockingAsk("n", int, len(self.items))
       ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
     elif k == 'k':
-      expr = input("list> ")
-      if expr != "": self.items = loads(expr)
+      try:
+        answer = blockingAsk("list", loads, None)
+        if answer != None and isinstance(answer, list): self.items = answer
+      except Exception: ctx.show("Load Failed")
 
-
-from datetime import timedelta
-from srt import Subtitle, compose
 class AsSrt(AsList):
   def finish(self):
     td = lambda s: timedelta(seconds=s)
