@@ -1,5 +1,6 @@
 pygame>=1.8
-numpy>=1.0
-mido>=1.2
 srt>=3.0
+mido>=1.2
+
+numpy>=1.0
 pyparsing>=2.4

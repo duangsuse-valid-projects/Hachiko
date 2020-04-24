@@ -77,9 +77,10 @@ def codegen(path_dst, path_header, name, lib_names):
     line(f"lib_path = findLibrary({repr(name)}, lib_names)")
     line(f"cfunc = createLibrary(lib_path)")
   def cimport(decls):
-    imports = set(filter(lambda it: it.startswith("c_"), flatMap(lambda it: [it[1]] + [a[1] for a in it[2]], decls)))
-    imports_code = f"from ctypes import {', '.join(imports)}"
-    print(imports_code); line(imports_code)
+    type_refs = flatMap(lambda it: [it[1]] + [arg[1] for arg in it[2]], decls)
+    imports = set(filter(lambda it: it.startswith("c_"), type_refs))
+    imports_code = f"from ctypes import {', '.join(sorted(imports))}"
+    line(imports_code); print(imports_code)
   def cdefs(decls):
     for decl in decls:
       rest = "" if len(decl[2]) == 0 else ",\n  " + ", ".join([f"({repr(name)}, {ty})" for (name, ty) in decl[2]])

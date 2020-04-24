@@ -7,7 +7,7 @@ lib_names = ['libfluidsynth-1', 'libfluidsynth', 'fluidsynth']
 lib_path = findLibrary('FluidSynth', lib_names)
 cfunc = createLibrary(lib_path)
 
-from ctypes import c_double, c_void_p, c_int, c_char_p
+from ctypes import c_char_p, c_double, c_int, c_void_p
 
 new_fluid_settings = cfunc('new_fluid_settings', c_void_p)
 delete_fluid_settings = cfunc('delete_fluid_settings', None,
