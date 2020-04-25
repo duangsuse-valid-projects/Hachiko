@@ -1,14 +1,14 @@
 #!/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Callable, TypeVar; T = TypeVar("T")
+from typing import Callable, Optional, TypeVar; T = TypeVar("T")
 
 from argparse import ArgumentParser, FileType
 from time import time
 from datetime import timedelta
 
 from srt import Subtitle, compose
-from json import dumps, loads
+from json import loads, dumps, JSONDecodeError
 
 import pygame
 
@@ -30,35 +30,38 @@ playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1
 
 INSTRUMENT_SF2 = env("SFONT", str, "instrument.sf2")
 sampleRate = env("SAMPLE_RATE", int, 44100)
-sfontPreset = 0
+sfontPreset = 0 #< used twice
 
 OCTAVE_NAMES = ["C","Cs","D","Ds","E","F","Fs","G","Gs","A","As","B"]
 OCTAVE_MAX_VALUE = 12
 
 BLACK_KEYS = [1, 3, 6, 8, 10]
 
+from string import digits
 def dumpOctave(pitch):
   octave, n = divmod(pitch, OCTAVE_MAX_VALUE)
-  return f"{OCTAVE_NAMES[octave]}_{n}" + ("b" if n in BLACK_KEYS else "")
+  return f"{OCTAVE_NAMES[octave]}_{n} " + ("b" if n in BLACK_KEYS else "") + f"'{pitch}"
 def readOctave(octa):
-  octave, n = octa.rstrip("b").split("_")
+  octave, n = octa.rstrip(f"b'{digits}").split("_")
   return OCTAVE_NAMES.index(octave)*OCTAVE_MAX_VALUE + int(n)
 
-def blockingAsk(name:str, transform:Callable[[str],T], default:T) -> T:
+def blockingAsk(name:str, transform:Callable[[str],T], default:T, placeholder:Optional[str] = None) -> T:
   if askMethod == "input":
+    if placeholder != None: print(placeholder)
     answer = input(f"{name}?> ")
     return transform(answer) if answer != "" else default
   elif askMethod == "tk":
     from tkinter import Tk
     from tkinter.simpledialog import askstring
-    root = Tk()
-    answer = askstring("Ask Input", f"input {name}")
-    root.destroy()
+    tk = Tk()
+    answer = askstring(f"Asking for {name}", f"Please input {name}:", initialvalue=placeholder)
+    tk.destroy()
     return transform(answer) if answer != None else default
   else: raise ValueError(f"unknown asking method {askMethod}")
 
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
-    epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last")
+    epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last\n"+
+      "Useful env-vars: SAMPLE_RATE, SFONT (sf2 path), ASK_METHOD (tk/input)")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-note-preset", type=int, default=0, help=f"SoundFont ({INSTRUMENT_SF2}) preset index, count from 0")
 app.add_argument("-play", type=FileType("r"), default=None, help="music file used for playing")
@@ -72,14 +75,15 @@ class RecordKeys(AsList):
       rm = self.items.pop()
       ctx.show(f"!~{rm} #{len(self.items)}")
     elif k == 'r':
-      print(dumps(self.items))
-      n = blockingAsk("n", int, len(self.items))
-      ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
+      try:
+        n = blockingAsk("n", int, len(self.items), placeholder=dumps(self.items))
+        ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
+      except ValueError: ctx.show("Invalid Count")
     elif k == 'k':
       try:
         answer = blockingAsk("list", loads, None)
         if answer != None and isinstance(answer, list): self.items = answer
-      except Exception: ctx.show("Load Failed")
+      except JSONDecodeError: ctx.show("Load Failed")
 
 class AsSrt(AsList):
   def finish(self):
@@ -136,7 +140,6 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     ctx.show(dumpOctave(note_base))
 
   def defaultOnKey(k):
-    intro[0].cancel() #< stop intro anim
     if k == 'q': raise SystemExit()
     elif k == '-': baseSlide(-10)
     elif k == '=': baseSlide(+10)
@@ -150,6 +153,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     getNumber = lambda: note_base + (event.key - ord('0'))
 
     if event.type == pygame.KEYDOWN:
+      if len(intro) == 1: intro[0].cancel(); intro.pop() #< stop intro anim
       if notNumber(): return
       else:
         pitch = getNumber()
