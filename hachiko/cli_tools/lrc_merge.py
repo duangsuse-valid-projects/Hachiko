@@ -1,4 +1,15 @@
 #!/bin/env python3
+# -*- coding: utf-8 -*-
+
+'''
+This tool can convert ungrouped lrc stream to List[List[LrcNote]]
+LrcNote is Tuple[int, str] (seconds, content)
+...wait, it's currently Subtitle(no, start, end, content)
+
+Bad model: Lrc / LrcLines / Srt
+read: str -> Lrc; dump: LrcLines -> str;
+into: LrcLines -> ...
+'''
 
 from datetime import timedelta
 from srt import Subtitle, parse, compose
@@ -36,15 +47,7 @@ def map2D(f, xss):
 def cfgOrDefault(value, f, x):
   return value if value != None else f(x)
 
-'''
-This tool can convert ungrouped lrc stream to List[List[LrcNote]]
-LrcNote is Tuple[int, str] (seconds, content)
-...wait, it's currently Subtitle(no, start, end, content)
 
-Bad model: Lrc / LrcLines / Srt
-read: str -> Lrc; dump: LrcLines -> str;
-into: LrcLines -> ...
-'''
 
 from re import compile
 PAT_LRC_ENTRY = compile(r"[\[<](\d{2}):(\d{2}).(\d{2})[>\]] ?([^<\n]*)")
@@ -82,7 +85,8 @@ def readLines(name):
   print(f"input {name}, terminated by '.'")
   return iter(lambda: input(f"{name}>"), ".")
 
-if __name__ == "__main__":
+from sys import argv
+def main(args = argv[1:]):
   from argparse import ArgumentParser
   app = ArgumentParser("lrc_merge",
     description="merge simple timeline LRC into line-splited LRC",
@@ -93,7 +97,7 @@ if __name__ == "__main__":
   app.add_argument("-sep", type=str, default=None, help="word seprator (or decided automatically from sentence)")
   app.add_argument("file", type=str, help="input SRT file (or 'lrc' and input from stdin)")
 
-  cfg = app.parse_args()
+  cfg = app.parse_args(args)
   use_lrc = cfg.file == "lrc"
   inSameLine = lambda a, b: abs((a.start if use_lrc else a.end) - b.start).total_seconds() < cfg.dist
 

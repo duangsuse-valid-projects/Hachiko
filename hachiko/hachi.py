@@ -12,9 +12,8 @@ from json import loads, dumps, JSONDecodeError
 
 import pygame
 
-from synthesize import NoteSynth
-from hachitools import *
-
+from .hachitools import *
+from .synthesize import NoteSynth
 
 def splitAs(type, transform = int, delim = ","):
   return lambda it: type(transform(s) for s in it.split(delim))
@@ -28,7 +27,8 @@ fontSize = env("SIZE_FONT", int, 36)
 askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
 
-INSTRUMENT_SF2 = env("SFONT", str, "instrument.sf2")
+from pkg_resources import resource_filename
+INSTRUMENT_SF2 = env("SFONT", str, resource_filename(__name__, "instrument.sf2"))
 sampleRate = env("SAMPLE_RATE", int, 44100)
 sfontPreset = 0 #< used twice
 
@@ -65,7 +65,7 @@ app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch t
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-note-preset", type=int, default=0, help=f"SoundFont ({INSTRUMENT_SF2}) preset index, count from 0")
 app.add_argument("-play", type=FileType("r"), default=None, help="music file used for playing")
-app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path")
+app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path (default puzi.srt)")
 
 
 class RecordKeys(AsList):
@@ -90,7 +90,8 @@ class AsSrt(AsList):
     td = lambda s: timedelta(seconds=s)
     return compose([Subtitle(i+1, td(p[0]), td(p[1]), str(p[2])) for (i, p) in enumerate(self.items)])
 
-def main(args):
+from sys import argv
+def main(args = argv[1:]):
   cfg = app.parse_args(args)
   global sfontPreset; sfontPreset = cfg.note_preset
   pygame.mixer.init(sampleRate)
@@ -257,6 +258,3 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn: break
   return reducer.finish()
-
-from sys import argv
-if __name__ == "__main__": main(argv[1:])

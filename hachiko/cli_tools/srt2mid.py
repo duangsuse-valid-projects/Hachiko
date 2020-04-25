@@ -32,7 +32,7 @@ def transform(srts:Iterator[Subtitle]) -> MidiFile:
 
   return out
 
-def transformBack(notez:Iterator[Message], is_lyrics:bool, k_time) -> List[Subtitle]:
+def transformBack(notez:Iterator[Message], is_lyrics:bool, k_time:float) -> List[Subtitle]:
   out = []
   def read(ty, blanks = ["set_tempo"]):
     note = next(notez)
@@ -65,23 +65,30 @@ def newPath(f, ext):
 def backMidFile(f, is_lyrics):
   midi = MidiFile(f.name, charset=getdefaultencoding(), ticks_per_beat=TICKS_PER_BEAT)
   (notes, k_time) = (cast(MidiTrack, max(midi.tracks, key=len)), SEC_MS) if SINGLE_TRACK else (midi, 1)
-  text_srt = srt_compose(transformBack(iter(notes), is_lyrics, k_time))
+
+  text_srt = srt_compose(transformBack(iter(notes), is_lyrics, float(k_time)))
   with open(newPath(f, "srt"), "w+") as srtf: srtf.write(text_srt)
+
+def midiNotes(path): #< merged from old midnotes.py
+  for i, track in enumerate(MidiFile(path).tracks):
+    msgs = [track[index] for index in range(0, len(track), 2)] #note-on -- note-off
+    for msg in msgs:
+      note = msg.dict().get("note")
+      if note != None: yield note
 
 modes = {
   "from": lambda f: transform(srt_parse(f.read())).save(newPath(f, "mid")),
   "back": lambda f: backMidFile(f, False),
-  "back-lyrics": lambda f: backMidFile(f, True)
+  "back-lyrics": lambda f: backMidFile(f, True),
+  "print-notes": lambda f: print(list(midiNotes(f.name)))
 }
 
-def main(args):
+from sys import argv
+def main(args = argv[1:]):
   if len(args) < 1:
-    print(f"Usage: srt2mid [ {'/'.join(modes.keys())} ] files")
+    print(f"Usage: srt2mid [ {'/'.join(modes.keys())} ] files...")
     return
   mname = args[0]
   (mode, paths) = (modes["from"], args[0:]) if mname not in modes else (modes[mname], args[1:])
   for path in paths:
     with open(path, "r") as ins: mode(ins)
-
-from sys import argv
-if __name__ == "__main__": main(argv[1:])

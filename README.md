@@ -19,13 +19,24 @@ The name of the project is *Hachiko*, inspired by the golden yellow Akita dog - 
 
 ## Installing
 
-There's no need for system-wide installation, just use the script `hachi.py`
+~~There's no need for system-wide installation, just use the script `hachi.py`~~
+
+Since version 1.1, setting up the installation using `setuptools` is required.
+
+```bash
+python3 setup.py install # can be --user or sudo
+```
 
 System library [FluidSynth](https://github.com/FluidSynth/fluidsynth) is required to run this application.
+
+### Old install-free version
+
+See [release 1.0](https://github.com/duangsuse-valid-projects/Hachiko/releases/tag/v1.0)
 
 ```bash
 pip install --user -r requirements.txt
 python3 hachi.py
+# use midnotes.py to replace srt2mid.py print-notes
 ```
 
 ## UI Control / Basic Routine
@@ -33,36 +44,36 @@ python3 hachi.py
 Hachiko is self documented, so just use the program.
 
 ```bash
-python3 hachi.py -h
+hachiko -h
 ```
 
 > NOTE: For the first time using GUI, you can spend more time learning hot keys
 
-Once `puzi.srt` is generated, you can use `python srt2mid.py puzi.srt` to transform it into MIDI file
+Once `puzi.srt` is generated, you can use `srt2mid puzi.srt` to transform it into MIDI file
 
-Btw, you can use pitches from extrenal tool (like [Synthesizer V](https://synthesizerv.com) editor) extracted by `python midnotes.py puzi.mid` instead of built-in approach
+Btw, you can use pitches from extrenal tool (like [Synthesizer V](https://synthesizerv.com/) editor or [MidiEditor](https://www.midieditor.org/)) extracted by `srt2mid print-notes puzi.mid` instead of built-in approach
 
 Btw, there's also an option to use [MELODIA Algorithm](https://github.com/duangsuse-valid-projects/audio_to_midi_melodia) to extract pitches directly from music
 
-## Tool `srt2mid.py` and `lrc_merge.py`
+## Tool `srt2mid` and `lrc_merge`
 
-[srt2mid.py](srt2mid.py) can be used to make conversation between SRT / MIDI File format
+[srt2mid.py](hachiko/cli_tools/srt2mid.py) can be used to make conversation between SRT / MIDI File format
 
 Output filename is determined automatically from input path, and SRT representation of MIDI track will be timeline of integer(note pitch)s.
 
 The default mode, "from", means "from srt to mid", and when extracting lyrics from mid file you have to use "back-lyrics" instead.
 
 ```plain
-Usage: srt2mid [ from/back/back-lyrics ] files
+Usage: srt2mid [ from/back/back-lyrics/print-notes ] files...
 ```
 
-[lrc_merge.py](lrc_merge.py) can be used to merge words-based lyrics into sentence-based lyrics
+[lrc_merge.py](hachiko/cli_tools/lrc_merge.py) can be used to merge words-based lyrics into sentence-based lyrics
 
 ```plain
-usage: lrc_merge [-h] [-dist n_sec] [-min-len n_sec] [-o name] (path / 'lrc')
+usage: lrc_merge [-h] [-dist n_sec] [-min-len n_sec] [-o name] [-sep word_seprator] (path / 'lrc')
 ```
 
 + `dist` max distance for words in same sentence, default `0.8`
 + `min-len` min duration for the last word in sentence (only when `lrc` input is used)
 
-Execute `python3 lrc_merge.py -h` to see full details
+Execute `lrc_merge -h` to see full details
