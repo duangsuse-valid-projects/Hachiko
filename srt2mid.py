@@ -11,7 +11,7 @@ from sys import getdefaultencoding
 from os import environ
 
 SINGLE_TRACK = bool(environ.get("SINGLE_TRACK"))
-TICKS_PER_BEAT = int(environ.get("TICKS_PER_BEAT") or 500) #480?
+TICKS_PER_BEAT = int(environ.get("TICKS_PER_BEAT") or 500) #480? both for srt->mid and mid<-srt
 
 SEC_MS = 1000
 
@@ -63,7 +63,7 @@ def newPath(f, ext):
   return f.name.rsplit(".")[0] + f".{ext}"
 
 def backMidFile(f, is_lyrics):
-  midi = MidiFile(f.name, charset=getdefaultencoding())
+  midi = MidiFile(f.name, charset=getdefaultencoding(), ticks_per_beat=TICKS_PER_BEAT)
   (notes, k_time) = (cast(MidiTrack, max(midi.tracks, key=len)), SEC_MS) if SINGLE_TRACK else (midi, 1)
   text_srt = srt_compose(transformBack(iter(notes), is_lyrics, k_time))
   with open(newPath(f, "srt"), "w+") as srtf: srtf.write(text_srt)
