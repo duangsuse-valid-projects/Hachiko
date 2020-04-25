@@ -60,7 +60,7 @@ def dumpLrc(lrc_lines, sep = None, surr1 = "[]", surr2 = "<>"):
   def formatLine(line):
     (t_fst, s_fst) = line[0]
     fmtFst = header(t_fst, surr1)+s_fst
-    sep1 = cfgOrDefault(sep, sepDeft, line)
+    sep1 = cfgOrDefault(sep, sepDeft, map(lambda note: note[1], line))
     return fmtFst +sep1+ sep1.join([header(t, surr2) + s for (t, s) in line[1:]])
   return linesep.join(map(formatLine, lrc_lines))
 
