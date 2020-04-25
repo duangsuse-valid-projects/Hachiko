@@ -11,18 +11,19 @@ from sys import getdefaultencoding
 from os import environ
 
 SINGLE_TRACK = bool(environ.get("SINGLE_TRACK"))
+TICKS_PER_BEAT = int(environ.get("TICKS_PER_BEAT") or 500) #480?
 
 SEC_MS = 1000
 
 def transform(srts:Iterator[Subtitle]) -> MidiFile:
-  out = MidiFile()
+  out = MidiFile(ticks_per_beat=TICKS_PER_BEAT)
   track = MidiTrack()
   out.tracks.append(track)
 
   timeof = lambda dt: int(dt.total_seconds()*SEC_MS)
   t0 = 0
   for srt in srts:
-    note = int(srt.content)
+    note = int(srt.content) #< pitch from
     t1 = timeof(srt.start)
     t2 = timeof(srt.end)
     track.append(Message("note_on", note=note, time=t1-t0))
@@ -38,7 +39,7 @@ def transformBack(notez:Iterator[Message], is_lyrics:bool, k_time) -> List[Subti
     if note.type != ty:
       if note.type == "end_of_track": raise StopIteration("EOT")
       while note.type in blanks: note = next(notez) #< jump off!
-      if note.type != ty: raise ValueError(f"unexpected note near {note}, expecting {ty}")
+      if note.type != ty: raise ValueError(f"unexpected msg {note}, expecting {ty}")
     return note
 
   timeof = lambda n: timedelta(seconds=n/k_time)
@@ -50,7 +51,7 @@ def transformBack(notez:Iterator[Message], is_lyrics:bool, k_time) -> List[Subti
       on = read("note_on")
       t_on = timeof(lyric.time if is_lyrics else on.time)
       t_off = timeof(read("note_off").time)
-    except StopIteration: break
+    except StopIteration: break #v pitch back
     out.append(Subtitle(index, t_acc+t_on, t_acc+t_on+t_off, lyric.text if is_lyrics else str(on.note) ))
     t_acc += (t_on + t_off)
     index += 1
