@@ -1,4 +1,4 @@
-# Hachiko
+# Hachiko [![PyPI](https://img.shields.io/pypi/v/hachiko-bapu?style=flat-square)](https://pypi.org/project/hachiko-bapu/)
 
 <div align="center">
 <img alt="Hachiko" src="Hachiko.png"></img>
@@ -25,6 +25,14 @@ Since version 1.1, setting up the installation using `setuptools` is required.
 
 ```bash
 python3 setup.py install # can be --user or sudo
+```
+
+or get it from PyPI:
+
+```bash
+pip3 install hachiko-bapu
+#v or, for the latest version
+pip3 install --upgrade git+https://github.com/duangsuse-valid-projects/Hachiko
 ```
 
 System library [FluidSynth](https://github.com/FluidSynth/fluidsynth) is required to run this application.
