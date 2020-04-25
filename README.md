@@ -1,4 +1,4 @@
-# Hachiko [![PyPI](https://img.shields.io/pypi/v/hachiko-bapu?style=flat-square)](https://pypi.org/project/hachiko-bapu/)
+# Hachiko [![PyPI](https://img.shields.io/pypi/v/hachiko-bapu?style=flat-square)](https://pypi.org/project/hachiko-bapu/) [![introduction](https://img.shields.io/badge/introduction-wiki-blue?style=flat-square)](https://github.com/duangsuse-valid-projects/Hachiko/wiki)
 
 <div align="center">
 <img alt="Hachiko" src="Hachiko.png"></img>
@@ -37,9 +37,9 @@ pip3 install --upgrade git+https://github.com/duangsuse-valid-projects/Hachiko
 
 System library [FluidSynth](https://github.com/FluidSynth/fluidsynth) is required to run this application.
 
-### Old install-free version
+### Old installation-free version
 
-See [release 1.0](https://github.com/duangsuse-valid-projects/Hachiko/releases/tag/v1.0)
+See [release 1.0](https://github.com/duangsuse-valid-projects/Hachiko/releases/tag/v1.0), get a zip(or tar) and uncompress:
 
 ```bash
 pip install --user -r requirements.txt
@@ -59,7 +59,7 @@ hachiko -h
 
 Once `puzi.srt` is generated, you can use `srt2mid puzi.srt` to transform it into MIDI file
 
-Btw, you can use pitches from extrenal tool (like [Synthesizer V](https://synthesizerv.com/) editor or [MidiEditor](https://www.midieditor.org/)) extracted by `srt2mid print-notes puzi.mid` instead of built-in approach
+Btw, you can use pitches from extrenal tool (like [Synthesizer V Editor](https://synthesizerv.com/)  or [MidiEditor](https://www.midieditor.org/)) extracted by `srt2mid print-notes puzi.mid` instead of built-in approach
 
 Btw, there's also an option to use [MELODIA Algorithm](https://github.com/duangsuse-valid-projects/audio_to_midi_melodia) to extract pitches directly from music
 
