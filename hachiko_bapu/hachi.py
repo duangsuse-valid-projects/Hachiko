@@ -1,7 +1,7 @@
 #!/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Callable, Optional, TypeVar; T = TypeVar("T")
+from typing import Any, Callable, Optional, TypeVar; T = TypeVar("T")
 
 from argparse import ArgumentParser, FileType
 from time import time
@@ -27,13 +27,7 @@ fontSize = env("SIZE_FONT", int, 36)
 askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
 
-from pkg_resources import resource_filename
-def resInstrumentSf2(name = "instrument.sf2") -> str:
-  try: sfont = resource_filename(__name__, name)
-  except ModuleNotFoundError: sfont = name
-  return env("SFONT", str, sfont)
-
-INSTRUMENT_SF2 = resInstrumentSf2()
+INSTRUMENT_SF2 = env("SFONT", str, resourcePath("instrument.sf2"))
 sampleRate = env("SAMPLE_RATE", int, 44100)
 sfontPreset = 0 #< used twice
 
@@ -50,18 +44,19 @@ def readOctave(octa):
   octave, n = octa.rstrip(f"b'{digits}").split("_")
   return OCTAVE_NAMES.index(octave)*OCTAVE_MAX_VALUE + int(n)
 
-def blockingAsk(name:str, transform:Callable[[str],T], default:T, placeholder:Optional[str] = None) -> T:
+def blockingAskThen(onDone:Callable[[T], Any], name:str, transform:Callable[[str],T], placeholder:Optional[str] = None):
   if askMethod == "input":
     if placeholder != None: print(placeholder)
     answer = input(f"{name}?> ")
-    return transform(answer) if answer != "" else default
+    if answer != "": onDone(transform(answer))
   elif askMethod == "tk":
     from tkinter import Tk
     from tkinter.simpledialog import askstring
-    tk = Tk()
-    answer = askstring(f"Asking for {name}", f"Please input {name}:", initialvalue=placeholder)
+    tk = Tk(); tk.withdraw() #< born hidden
+
+    answer = askstring(f"Asking for {name}", f"Please input {name}:", initialvalue=placeholder or "")
     tk.destroy()
-    return transform(answer) if answer != None else default
+    if answer != None: onDone(transform(answer))
   else: raise ValueError(f"unknown asking method {askMethod}")
 
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
@@ -80,14 +75,14 @@ class RecordKeys(AsList):
       rm = self.items.pop()
       ctx.show(f"!~{rm} #{len(self.items)}")
     elif k == 'r':
-      try:
-        n = blockingAsk("n", int, len(self.items), placeholder=dumps(self.items))
-        ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
+      play = lambda n: ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
+      try: blockingAskThen(play, "n", int, str(len(self.items)))
       except ValueError: ctx.show("Invalid Count")
     elif k == 'k':
-      try:
-        answer = blockingAsk("list", loads, None)
-        if answer != None and isinstance(answer, list): self.items = answer
+      def save(answer):
+        if isinstance(answer, list): self.items = answer
+        else: ctx.show(f"Not List: {answer}")
+      try: blockingAskThen(save, "list", loads, dumps(self.items))
       except JSONDecodeError: ctx.show("Load Failed")
 
 class AsSrt(AsList):
@@ -144,7 +139,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
 
   def baseSlide(n):
     nonlocal note_base
-    note_base += n
+    note_base = (note_base + n) % 128 #< cyclic coerceLT
     playSec(playDuration[0], note_base)
     ctx.show(dumpOctave(note_base))
 
@@ -222,7 +217,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
 
   def nextPitch():
     try: return next(pitchz)
-    except StopIteration: raise NonlocalReturn("done")
+    except StopIteration: raise NonlocalReturn()
   def splitNote():
     synth.noteSwitch(nextPitch())
   def giveSegment():

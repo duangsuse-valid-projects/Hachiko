@@ -5,7 +5,7 @@ from ctypes import CDLL, CFUNCTYPE
 from ctypes.util import find_library
 
 from sys import platform as sys_platform
-from os.path import isfile
+from os.path import isfile, abspath
 from itertools import chain
 
 def require(value, p, message):
@@ -27,10 +27,10 @@ def findLibrary(name, lib_names, solver=lambda name: [f"./{name}.dll"]) -> str:
   paths = filter(isNotNone, map(find_library, lib_names))
   for dlls in map(solver, lib_names):
     paths = chain(paths, filter(isfile, dlls))
-  try:
-    return str(next(paths)) #< appended dll scan
-  except StopIteration:
-    raise ImportError(f"couldn't find the {name} library")
+
+  path = next(paths, None) #< appended dll scan
+  if path == None: raise ImportError(f"couldn't find the {name} library")
+  else: return abspath(str(path))
 
 def createLibrary(path, mode = 1):
   lib = CDLL(path)
