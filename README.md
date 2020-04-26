@@ -23,6 +23,8 @@ The name of the project is *Hachiko*, inspired by the golden yellow Akita dog - 
 
 Since version 1.1, setting up the installation using `setuptools` is required.
 
+> For Windows installation guide, please read [this wiki](https://github.com/duangsuse-valid-projects/Hachiko/wiki/Windows-Installation)
+
 ```bash
 python3 setup.py install # can be --user or sudo
 ```

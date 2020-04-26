@@ -4,15 +4,16 @@ from typing import Tuple, List
 
 from ctypes import sizeof, create_string_buffer, c_int16
 from .funutils import *
-
-import numpy
 from sf2utils.sf2parse import Sf2File
+
+try: import numpy
+except ImportError: pass
 
 drivers = ["alsa", "oss", "jack", "portaudio", "sndmgr", "coreaudio", "Direct Sound", "pulseaudio"]
 
 from .FluidSynth import *
 
-def fluid_synth_write_s16_stereo(synth, n: int, n_channel = 2) -> numpy.ndarray:
+def fluid_synth_write_s16_stereo(synth, n: int, n_channel = 2): # -> numpy.ndarray
   """Return generated samples in stereo 16-bit format"""
   buf = create_string_buffer(n*n_channel*sizeof(c_int16))
   fluid_synth_write_s16(synth, n, buf, 0, n_channel, buf, 1, n_channel)

@@ -9,7 +9,8 @@ def parse_requirements(requirements):
     return list(filter(lambda s: s.strip() != "", items))
 
 setup(
-  name="hachiko-bapu", version="0.1.1",
+  name="hachiko-bapu", version="0.1.2",
+  python_requires=">=3.5",
   author="duangsuse", author_email="fedora-opensuse@outlook.com",
   url="https://github.com/duangsuse-valid-projects/Hachiko",
   description="Simple pygame GUI tool for creating pitch timeline",
@@ -29,17 +30,16 @@ This program requires system FluidSynth library to run, this package also provid
     "Topic :: Utilities"
   ],
 
-  python_requires=">=3.6",
   packages=find_packages(),
+  package_data={ "": ["*.sf2"] },
   install_requires=parse_requirements("requirements.txt"),
   extras_require={
     "synthesize buffer": ["numpy>=1.0"],
     "funutils codegen": ["pyparsing>=2.4"]
   },
-  package_data={ "": ["*.sf2"] },
   entry_points={
-    "gui_scripts": ["hachiko = hachiko.hachi:main"],
     "console_scripts": [
+      "hachiko = hachiko.hachi:main",
       "srt2mid = hachiko.cli_tools.srt2mid:main",
       "lrc_merge = hachiko.cli_tools.lrc_merge:main"
     ]

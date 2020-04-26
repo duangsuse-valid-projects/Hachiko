@@ -1,3 +1,4 @@
 pygame>=1.8
+sf2utils>=0.9
 srt>=3.0
 mido>=1.2
