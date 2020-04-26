@@ -2,7 +2,6 @@ from typing import Any, Callable, Optional, TypeVar; T = TypeVar("T")
 
 from threading import Timer
 from os import environ
-from pkg_resources import resource_filename
 
 SEC_MS = 1000
 
@@ -10,10 +9,6 @@ def grayColor(n:int): return (n,n,n)
 
 def env(name:str, transform:Callable[[str],T], default:T) -> T:
   return transform(environ[name]) if name in environ else default
-
-def resourcePath(path) -> str:
-  try: return resource_filename(__name__, path)
-  except ModuleNotFoundError: return path
 
 def timeout(n_sec:float, op):
   timer = Timer(n_sec, op); timer.start()

@@ -14,6 +14,7 @@ import pygame
 
 from .hachitools import *
 from .synthesize import NoteSynth
+from pkg_resources import resource_filename
 
 def splitAs(type, transform = int, delim = ","):
   return lambda it: type(transform(s) for s in it.split(delim))
@@ -27,7 +28,7 @@ fontSize = env("SIZE_FONT", int, 36)
 askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
 
-INSTRUMENT_SF2 = env("SFONT", str, resourcePath("instrument.sf2"))
+INSTRUMENT_SF2 = env("SFONT", str, resource_filename(__name__, "instrument.sf2"))
 sampleRate = env("SAMPLE_RATE", int, 44100)
 sfontPreset = 0 #< used twice
 

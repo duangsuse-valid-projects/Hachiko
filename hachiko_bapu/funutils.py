@@ -23,6 +23,10 @@ def flatMap(f, xs):
   for ys in map(f, xs):
     for y in ys: yield y
 
+def takePipeIf(p, transform, value):
+  res = transform(value)
+  return res if p(res) else value
+
 def findLibrary(name, lib_names, solver=lambda name: [f"./{name}.dll"]) -> str:
   paths = filter(isNotNone, map(find_library, lib_names))
   for dlls in map(solver, lib_names):
@@ -30,7 +34,7 @@ def findLibrary(name, lib_names, solver=lambda name: [f"./{name}.dll"]) -> str:
 
   path = next(paths, None) #< appended dll scan
   if path == None: raise ImportError(f"couldn't find the {name} library")
-  else: return abspath(str(path))
+  else: return takePipeIf(isfile, abspath, str(path)) #< only if found file, not libname in PATH
 
 def createLibrary(path, mode = 1):
   lib = CDLL(path)
