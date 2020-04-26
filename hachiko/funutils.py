@@ -5,31 +5,13 @@ from ctypes import CDLL, CFUNCTYPE
 from ctypes.util import find_library
 
 from sys import platform as sys_platform
-from os import name as os_name
-
-def findLibrary(name, lib_names) -> str:
-  try:
-    return next(filter(lambda it: it != None, map(find_library, lib_names))) or ""
-  except StopIteration:
-    raise ImportError(f"Couldn't find the {name} library")
-
-def createLibrary(path, mode = 1):
-  lib = CDLL(path)
-  def cfunc(name, t_result, *args):
-    t_args = tuple(arg[1] for arg in args)
-    extras = tuple((mode, arg[0]) for arg in args)
-    return CFUNCTYPE(t_result, *t_args)((name, lib), extras)
-  return cfunc
-
-def platform(opts = {"linux": "linux", "windows": "windows", "macos": "macos"}):
-  for (k, v) in opts.items():
-    if sys_platform.lower().startswith(k): return v
-  return os_name
-
+from os.path import isfile
+from itertools import chain
 
 def require(value, p, message):
   if not p(value): raise ValueError(f"{message}: {value}")
 
+isNotNone = lambda it: it != None
 isNonnegative = lambda it: it >= 0
 def isInbounds(start, stop):
   return lambda it: it in range(start, stop)
@@ -40,6 +22,30 @@ def hasIndex(i):
 def flatMap(f, xs):
   for ys in map(f, xs):
     for y in ys: yield y
+
+def findLibrary(name, lib_names, solver=lambda name: [f"./{name}.dll"]) -> str:
+  paths = filter(isNotNone, map(find_library, lib_names))
+  for dlls in map(solver, lib_names):
+    paths = chain(paths, filter(isfile, dlls))
+  try:
+    return str(next(paths)) #< appended dll scan
+  except StopIteration:
+    raise ImportError(f"couldn't find the {name} library")
+
+def createLibrary(path, mode = 1):
+  lib = CDLL(path)
+  def cfunc(name, t_result, *args):
+    t_args = tuple(arg[1] for arg in args)
+    extras = tuple((mode, arg[0]) for arg in args)
+    return CFUNCTYPE(t_result, *t_args)((name, lib), extras)
+  return cfunc
+
+def platform(opts = {"linux": ["linux"], "windows": ["win", "cygwin"], "macos": ["darwin"]}):
+  for (v, ks) in opts.items():
+    for k in ks:
+      if sys_platform.lower().startswith(k): return v
+  raise ValueError(f"unsupported platform: {sys_platform}")
+
 
 global cdecls #v define a subset of C Header
 if __name__ == "__main__":
@@ -101,11 +107,11 @@ def codegen(path_dst, path_header, name, lib_names):
     cdefs(decls)
   output.close()
 
-def main(argv):
+def main(argv = argv):
   if len(argv) < 4:
     print(f"Usage: {argv[0]} header name lib_names")
     return
   header, name = argv[1:3]
   codegen(f"{name}.py", header, name, argv[3:])
 
-if __name__ == '__main__': main(argv)
+if __name__ == '__main__': main()

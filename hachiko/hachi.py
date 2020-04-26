@@ -182,7 +182,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
       if exc.value == "proceed": break
   return reducer.finish()
 
-class CallFlagTimed(CallFlag):
+class CallFlagTimed(CallFlag): #< time record (op -- op1)*
   def __init__(self, op, op1):
     super().__init__(op, op1)
     self.t0 = time()
