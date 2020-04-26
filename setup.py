@@ -9,7 +9,7 @@ def parse_requirements(requirements):
     return list(filter(lambda s: s.strip() != "", items))
 
 setup(
-  name="hachiko-bapu", version="0.1.3",
+  name="hachiko-bapu", version="0.1.4",
   python_requires=">=3.5",
   author="duangsuse", author_email="fedora-opensuse@outlook.com",
   url="https://github.com/duangsuse-valid-projects/Hachiko",
@@ -39,8 +39,8 @@ This program requires system FluidSynth library to run, this package also provid
   },
   entry_points={
     "console_scripts": [
-      "hachiko = hachiko.hachi:main",
-      "srt2mid = hachiko.cli_tools.srt2mid:main",
-      "lrc_merge = hachiko.cli_tools.lrc_merge:main"
+      "hachiko = hachiko_bapu.hachi:main",
+      "srt2mid = hachiko_bapu.cli_tools.srt2mid:main",
+      "lrc_merge = hachiko_bapu.cli_tools.lrc_merge:main"
     ]
   })

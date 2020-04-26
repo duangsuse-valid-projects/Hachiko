@@ -28,7 +28,12 @@ askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
 
 from pkg_resources import resource_filename
-INSTRUMENT_SF2 = env("SFONT", str, resource_filename(__name__, "instrument.sf2"))
+def resInstrumentSf2(name = "instrument.sf2") -> str:
+  try: sfont = resource_filename(__name__, name)
+  except ModuleNotFoundError: sfont = name
+  return env("SFONT", str, sfont)
+
+INSTRUMENT_SF2 = resInstrumentSf2()
 sampleRate = env("SAMPLE_RATE", int, 44100)
 sfontPreset = 0 #< used twice
 
@@ -117,6 +122,9 @@ def gameCenterText(text, cx=0.5, cy=0.5):
   bg.blit(rtext, textpos)
   pygame.display.flip()
 
+def clamlySetFont(synth, path, preset):
+  try: synth.setFont(path, preset)
+  except OSError: print(f"{path} is required to enable note playback!")
 
 def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
   gameWindow(caption, WINDOW_DIMEN)
@@ -126,7 +134,7 @@ def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add
     synth.noteSwitch(pitch)
     timeout(n_sec, synth.noteoff)
 
-  synth.setFont(INSTRUMENT_SF2, sfontPreset)
+  clamlySetFont(synth, INSTRUMENT_SF2, sfontPreset)
   synth.start()
   playSec(playDuration[1], note_base)
 
@@ -204,7 +212,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
     mus.play()
 
   synth = NoteSynth(sampleRate)
-  synth.setFont(INSTRUMENT_SF2, sfontPreset)
+  clamlySetFont(synth, INSTRUMENT_SF2, sfontPreset)
   synth.start()
 
   onPausePlay = CallFlagTimed(mus.unpause, mus.pause)
@@ -258,3 +266,5 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
       for event in pygame.event.get(): onEvent(event)
     except NonlocalReturn: break
   return reducer.finish()
+
+if __name__ == "__main__": main()

@@ -12,7 +12,8 @@ into: LrcLines -> ...
 '''
 
 from datetime import timedelta
-from srt import Subtitle, parse, compose
+from srt import Subtitle, compose
+from srt import parse as fromSrt
 
 from os import linesep
 
@@ -48,7 +49,6 @@ def cfgOrDefault(value, f, x):
   return value if value != None else f(x)
 
 
-
 from re import compile
 PAT_LRC_ENTRY = compile(r"[\[<](\d{2}):(\d{2}).(\d{2})[>\]] ?([^<\n]*)")
 
@@ -66,6 +66,7 @@ def dumpLrc(lrc_lines, sep = None, surr1 = "[]", surr2 = "<>"):
     sep1 = cfgOrDefault(sep, sepDeft, map(lambda note: note[1], line))
     return fmtFst +sep1+ sep1.join([header(t, surr2) + s for (t, s) in line[1:]])
   return linesep.join(map(formatLine, lrc_lines))
+
 
 def fromLrc(text, min_len):
   td = lambda t: timedelta(seconds=t)
@@ -101,7 +102,8 @@ def main(args = argv[1:]):
   use_lrc = cfg.file == "lrc"
   inSameLine = lambda a, b: abs((a.start if use_lrc else a.end) - b.start).total_seconds() < cfg.dist
 
-  data = list(flatMap(lambda t: fromLrc(t, cfg.min_len), readLines("lrc")) if use_lrc else parse(open(cfg.file).read()))
+  #v regex findall has input size limitations...
+  data = list(flatMap(lambda t: fromLrc(t, cfg.min_len), readLines("lrc")) if use_lrc else fromSrt(open(cfg.file).read()))
   print(" ".join([f"{srt.start.total_seconds()};{srt.content}" for srt in data]))
 
   print("== lyrics")
@@ -110,3 +112,5 @@ def main(args = argv[1:]):
 
   with open(cfg.o, "w+") as srtf:
     srtf.write(compose(intoSrt(result, cfg.sep)))
+
+if __name__ == "__main__": main()

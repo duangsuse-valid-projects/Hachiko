@@ -92,3 +92,5 @@ def main(args = argv[1:]):
   (mode, paths) = (modes["from"], args[0:]) if mname not in modes else (modes[mname], args[1:])
   for path in paths:
     with open(path, "r") as ins: mode(ins)
+
+if __name__ == "__main__": main()

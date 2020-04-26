@@ -131,3 +131,5 @@ dmypy.json
 # Project specified
 *.srt
 *.mid
+*.mp4
+*.ogg
