@@ -81,7 +81,7 @@ class RecordKeys(AsList):
       except ValueError: ctx.show("Invalid Count")
     elif k == 'k':
       def save(answer):
-        if isinstance(answer, list): self.items = answer
+        if isinstance(answer, (list, str)): self.items = answer
         else: ctx.show(f"Not List: {answer}")
       try: blockingAskThen(save, "list", loads, dumps(self.items))
       except JSONDecodeError: ctx.show("Load Failed")
@@ -122,7 +122,7 @@ def clamlySetFont(synth, path, preset):
   try: synth.setFont(path, preset)
   except OSError: print(f"{path} is required to enable note playback!")
 
-def guiReadPitches(note_base, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
+def guiReadPitches(note_base:int, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
   gameWindow(caption, WINDOW_DIMEN)
 
   synth = NoteSynth(sampleRate)
@@ -200,7 +200,7 @@ class CallFlagTimed(CallFlag): #< time record (op -- op1)*
       self.t0 = t1
       return t1 - t0
 
-def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek = 5.0, d_volume = 0.1):
+def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek = 5.0, d_volume = 0.1, note_base = 45):
   mus = pygame.mixer_music; mus_t0 = time()
   gameWindow(caption, WINDOW_DIMEN)
   if play != None:
@@ -220,7 +220,11 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
     try: return next(pitchz)
     except StopIteration: raise NonlocalReturn()
   def splitNote():
-    synth.noteSwitch(nextPitch())
+    pitch = nextPitch() #v compat for alternative type
+    if isinstance(pitch, int): synth.noteSwitch(pitch)
+    else:
+      synth.noteSwitch(note_base if synth.last_pitch != note_base else note_base+2)
+      gameCenterText(str(pitch))
   def giveSegment():
     nonlocal t1
     t2 = time()
