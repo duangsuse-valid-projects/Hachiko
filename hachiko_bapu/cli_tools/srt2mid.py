@@ -25,14 +25,12 @@ def transform(srtz:Iterator[Subtitle], is_lyrics:bool) -> MidiFile:
   timeof = lambda dt: int(dt.total_seconds()*SEC_MS)
   t0 = 0
   for srt in srtz:
-    if is_lyrics: #< const branch
-      track.append(MetaMessage("lyrics", text=srt.content))
-      note = NOTE_BASE
-    else:
-      note = int(srt.content) #< pitch from
     t1 = timeof(srt.start)
     t2 = timeof(srt.end)
-    track.append(Message("note_on", note=note, time=t1-t0))
+    if is_lyrics: #v const branches
+      track.append(MetaMessage("lyrics", text=srt.content, time=t1-t0))
+    note = NOTE_BASE if is_lyrics else int(srt.content) #< pitch from
+    track.append(Message("note_on", note=note, time=0 if is_lyrics else t1-t0))
     track.append(Message("note_off", note=note, time=t2-t1))
     t0 = t2
 
