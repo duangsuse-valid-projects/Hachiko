@@ -10,6 +10,8 @@ from datetime import timedelta
 from srt import Subtitle, compose
 from json import loads, dumps, JSONDecodeError
 
+from os import environ #v disable prompt
+environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame
 
 from .hachitools import *
@@ -20,10 +22,12 @@ def splitAs(type, transform = int, delim = ","):
   return lambda it: type(transform(s) for s in it.split(delim))
 
 WINDOW_DIMEN = env("DIMEN", splitAs(tuple), (300,300))
+NAME_STDOUT = "-"
 
 backgroundColor = grayColor(env("GRAY_BACK", int, 0x30))
 textColor = grayColor(env("GRAY_TEXT", int, 0xfa))
-fontSize = env("SIZE_FONT", int, 36)
+fontName = env("FONT_NAME", str, "Arial")
+fontSize = env("FONT_SIZE", int, 36)
 
 askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
@@ -47,7 +51,7 @@ def readOctave(octa):
 
 def blockingAskThen(onDone:Callable[[T], Any], name:str, transform:Callable[[str],T], placeholder:Optional[str] = None):
   if askMethod == "input":
-    if placeholder != None: print(placeholder)
+    if placeholder != None: print(placeholder, file=stderr)
     answer = input(f"{name}?> ")
     if answer != "": onDone(transform(answer))
   elif askMethod == "tk":
@@ -62,11 +66,13 @@ def blockingAskThen(onDone:Callable[[T], Any], name:str, transform:Callable[[str
 
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
     epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last\n"+
-      "Useful env-vars: SAMPLE_RATE, SFONT (sf2 path), ASK_METHOD (tk/input)")
+      f"Useful env-vars: SAMPLE_RATE, SFONT (sf2 path), ASK_METHOD (tk/input); pygame {pygame.ver}")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-note-preset", type=int, default=0, help=f"SoundFont ({INSTRUMENT_SF2}) preset index, count from 0")
+app.add_argument("-seq", type=str, default=None, help="sequence given in pitch editor window")
 app.add_argument("-play", type=FileType("r"), default=None, help="music file used for playing")
-app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path (default puzi.srt)")
+app.add_argument("-play-seek", type=float, default=0.0, help="initial seek for player")
+app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path (default puzi.srt, can be - for stdout)")
 
 
 class RecordKeys(AsList):
@@ -91,17 +97,19 @@ class AsSrt(AsList):
     td = lambda s: timedelta(seconds=s)
     return compose([Subtitle(i+1, td(p[0]), td(p[1]), str(p[2])) for (i, p) in enumerate(self.items)])
 
-from sys import argv
+from sys import argv, stdout, stderr
 def main(args = argv[1:]):
   cfg = app.parse_args(args)
   global sfontPreset; sfontPreset = cfg.note_preset
   pygame.mixer.init(sampleRate)
   pygame.init()
   rkeys = RecordKeys()
-  pitches = guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
-  srt = guiReadTimeline(iter(pitches), AsSrt(), play=cfg.play)
-  with open(cfg.o, "w+", encoding="utf-8") as srtf:
-    srtf.write(srt)
+  pitches = loads(cfg.seq) if cfg.seq != None else guiReadPitches(cfg.note_base, rkeys, onKey=rkeys.actions)
+  srt = guiReadTimeline(iter(pitches), AsSrt(), play=cfg.play, play_seek=cfg.play_seek)
+
+  if cfg.o == NAME_STDOUT: stdout.write(srt)
+  else:
+    with open(cfg.o, "w+", encoding="utf-8") as srtf: srtf.write(srt)
 
 
 def gameWindow(caption, dimen):
@@ -112,7 +120,7 @@ def gameCenterText(text, cx=0.5, cy=0.5):
   bg = pygame.display.get_surface()
   bg.fill(backgroundColor)
 
-  font = pygame.font.Font(None, fontSize)
+  font = pygame.font.SysFont(fontName, fontSize)
   rtext = font.render(text, 1, textColor)
   textpos = rtext.get_rect(centerx=bg.get_width()*cx, centery=bg.get_height()*cy)
   bg.blit(rtext, textpos)
@@ -120,7 +128,7 @@ def gameCenterText(text, cx=0.5, cy=0.5):
 
 def clamlySetFont(synth, path, preset):
   try: synth.setFont(path, preset)
-  except OSError: print(f"{path} is required to enable note playback!")
+  except OSError: print(f"{path} is required to enable note playback!", file=stderr)
 
 def guiReadPitches(note_base:int, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
   gameWindow(caption, WINDOW_DIMEN)
@@ -200,7 +208,7 @@ class CallFlagTimed(CallFlag): #< time record (op -- op1)*
       self.t0 = t1
       return t1 - t0
 
-def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek = 5.0, d_volume = 0.1, note_base = 45):
+def guiReadTimeline(pitchz, reducer, play = None, play_seek = 0.0, caption = "Add Timeline", d_seek = 5.0, d_volume = 0.1, note_base = 45):
   mus = pygame.mixer_music; mus_t0 = time()
   gameWindow(caption, WINDOW_DIMEN)
   if play != None:
@@ -215,6 +223,16 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
   gameCenterText("[A]keep [S]split")
   t0 = time()
   t1 = None
+  def seek(dist:float):
+    nonlocal mus_t0, t0
+    if mus.get_pos() == (-1): return
+    pos = time() - mus_t0 #< pygame mixer_music.get_pos does not follow set_pos
+    newpos = pos+dist
+    print("+@", pos, newpos, file=stderr)
+    mus.set_pos(newpos)
+    mus_t0 -= dist
+    t0 -= dist
+  seek(play_seek)
 
   last_item = None #< function could be rewritten in two variants
   def nextPitch():
@@ -235,7 +253,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
     t1 = t2 #< new start
 
   def onEvent(event):
-    nonlocal t0, t1, mus_t0
+    nonlocal t0, t1
     if event.type == pygame.KEYDOWN:
       key = chr(event.key)
       if key == 'a':
@@ -251,13 +269,7 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
         t = onPausePlay()
         if t != None: t0 += t
       elif key == 'ē': # Arrow-Right
-        if mus.get_pos() == (-1): return
-        pos = time() - mus_t0 #< pygame mixer_music.get_pos does not follow set_pos
-        newpos = pos+seek
-        print("+@", pos, newpos)
-        mus.set_pos(newpos)
-        mus_t0 -= seek
-        t0 -= seek
+        seek(d_seek)
       elif key == '-': # volume down
         mus.set_volume(mus.get_volume() - d_volume)
       elif key == '=': # volume up
