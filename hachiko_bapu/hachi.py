@@ -216,19 +216,22 @@ def guiReadTimeline(pitchz, reducer, play = None, caption = "Add Timeline", seek
   t0 = time()
   t1 = None
 
+  last_item = None #< function could be rewritten in two variants
   def nextPitch():
     try: return next(pitchz)
     except StopIteration: raise NonlocalReturn()
   def splitNote():
+    nonlocal last_item
     pitch = nextPitch() #v compat for alternative type
     if isinstance(pitch, int): synth.noteSwitch(pitch)
     else:
       synth.noteSwitch(note_base if synth.last_pitch != note_base else note_base+2)
+      last_item = pitch
       gameCenterText(str(pitch))
   def giveSegment():
     nonlocal t1
     t2 = time()
-    reducer.accept( (t1-t0, t2-t0, synth.last_pitch) )
+    reducer.accept( (t1-t0, t2-t0, last_item or synth.last_pitch) )
     t1 = t2 #< new start
 
   def onEvent(event):
