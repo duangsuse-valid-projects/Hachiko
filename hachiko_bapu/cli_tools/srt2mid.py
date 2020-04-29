@@ -5,25 +5,31 @@ from typing import List, Iterator, cast
 
 from datetime import timedelta
 from srt import Subtitle, parse as srt_parse, compose as srt_compose
-from mido import Message, MidiFile, MidiTrack
+from mido import Message, MetaMessage, MidiFile, MidiTrack
 
 from sys import getdefaultencoding
 from os import environ
 
-SINGLE_TRACK = bool(environ.get("SINGLE_TRACK"))
-TICKS_PER_BEAT = int(environ.get("TICKS_PER_BEAT") or 500) #480? both for srt->mid and mid<-srt
-
 SEC_MS = 1000
 
-def transform(srts:Iterator[Subtitle]) -> MidiFile:
+def env(name, transform, default): return transform(environ[name]) if name in environ else default
+SINGLE_TRACK = env("SINGLE_TRACK", bool, False)
+TICKS_PER_BEAT = env("TICKS_PER_BEAT", int, 500) #480? both for srt->mid and mid<-srt
+NOTE_BASE = env("NOTE_BASE", int, 45)
+
+def transform(srtz:Iterator[Subtitle], is_lyrics:bool) -> MidiFile:
   out = MidiFile(ticks_per_beat=TICKS_PER_BEAT)
   track = MidiTrack()
   out.tracks.append(track)
 
   timeof = lambda dt: int(dt.total_seconds()*SEC_MS)
   t0 = 0
-  for srt in srts:
-    note = int(srt.content) #< pitch from
+  for srt in srtz:
+    if is_lyrics: #< const branch
+      track.append(MetaMessage("lyrics", text=srt.content))
+      note = NOTE_BASE
+    else:
+      note = int(srt.content) #< pitch from
     t1 = timeof(srt.start)
     t2 = timeof(srt.end)
     track.append(Message("note_on", note=note, time=t1-t0))
@@ -62,6 +68,9 @@ def transformBack(notez:Iterator[Message], is_lyrics:bool, k_time:float) -> List
 def newPath(f, ext):
   return f.name.rsplit(".")[0] + f".{ext}"
 
+def fromSrtFile(f, is_lyrics):
+  transform(srt_parse(f.read()), is_lyrics).save(newPath(f, "mid"))
+
 def backMidFile(f, is_lyrics):
   midi = MidiFile(f.name, charset=getdefaultencoding(), ticks_per_beat=TICKS_PER_BEAT)
   (notes, k_time) = (cast(MidiTrack, max(midi.tracks, key=len)), SEC_MS) if SINGLE_TRACK else (midi, 1)
@@ -77,7 +86,8 @@ def midiNotes(path): #< merged from old midnotes.py
       if note != None: yield note
 
 modes = {
-  "from": lambda f: transform(srt_parse(f.read())).save(newPath(f, "mid")),
+  "from": lambda f: fromSrtFile(f, False),
+  "from-lyrics": lambda f: fromSrtFile(f, True),
   "back": lambda f: backMidFile(f, False),
   "back-lyrics": lambda f: backMidFile(f, True),
   "print-notes": lambda f: print(list(midiNotes(f.name)))
