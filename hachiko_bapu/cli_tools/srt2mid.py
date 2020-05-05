@@ -18,7 +18,7 @@ TICKS_PER_BEAT = env("TICKS_PER_BEAT", int, 500) #480? both for srt->mid and mid
 NOTE_BASE = env("NOTE_BASE", int, 45)
 
 def transform(srtz:Iterator[Subtitle], is_lyrics:bool) -> MidiFile:
-  out = MidiFile(ticks_per_beat=TICKS_PER_BEAT)
+  out = MidiFile(charset=getdefaultencoding(), ticks_per_beat=TICKS_PER_BEAT)
   track = MidiTrack()
   out.tracks.append(track)
 
