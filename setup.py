@@ -9,7 +9,7 @@ def parse_requirements(requirements):
     return list(filter(lambda s: s.strip() != "", items))
 
 setup(
-  name="hachiko-bapu", version="0.1.6",
+  name="hachiko-bapu", version="0.1.7",
   python_requires=">=3.5",
   author="duangsuse", author_email="fedora-opensuse@outlook.com",
   url="https://github.com/duangsuse-valid-projects/Hachiko",
