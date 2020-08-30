@@ -40,6 +40,7 @@ This program requires system FluidSynth library to run, this package also provid
   entry_points={
     "console_scripts": [
       "hachiko = hachiko_bapu.hachi:main",
+      "hachiko-groups = hachiko_bapu.hachi_groups:main",
       "srt2mid = hachiko_bapu.cli_tools.srt2mid:main",
       "lrc_merge = hachiko_bapu.cli_tools.lrc_merge:main"
     ]

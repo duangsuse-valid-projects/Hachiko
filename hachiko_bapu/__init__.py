@@ -1,1 +1,1 @@
-__all__ = ["hachi", "hachitools", "synthesize"]
+__all__ = ["hachi", "hachi_groups", "hachitools", "synthesize"]

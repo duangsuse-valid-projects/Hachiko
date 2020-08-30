@@ -72,7 +72,7 @@ def blockingAskThen(onDone:Callable[[T], Any], name:str, transform:Callable[[str
 
 app = ArgumentParser(prog="hachi", description="Simple tool for creating pitch timeline",
     epilog="In pitch window, [0-9] select pitch; [Enter] add; [Backspace] remove last\n"+
-      f"Useful env-vars: SAMPLE_RATE, SFONT (sf2 path), ASK_METHOD (tk/input); pygame {pygame.ver}")
+      f"Useful env-vars: SAMPLE_RATE, BGM_VOLUME, SFONT (sf2 path), ASK_METHOD (tk/input); pygame {pygame.ver}")
 app.add_argument("-note-base", type=int, default=45, help="pitch base number")
 app.add_argument("-note-preset", type=int, default=0, help=f"SoundFont ({INSTRUMENT_SF2}) preset index, count from 0")
 app.add_argument("-seq", type=str, default=None, help="sequence given in pitch editor window")
