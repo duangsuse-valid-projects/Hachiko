@@ -133,3 +133,5 @@ dmypy.json
 *.mid
 *.mp4
 *.ogg
+*.quicktime
+*.srt~

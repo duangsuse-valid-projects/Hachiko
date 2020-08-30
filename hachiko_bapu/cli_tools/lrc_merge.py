@@ -4,11 +4,12 @@
 '''
 This tool can convert ungrouped lrc stream to List[List[LrcNote]]
 LrcNote is Tuple[int, str] (seconds, content)
-...wait, it's currently Subtitle(no, start, end, content)
+...wait, it's actually Subtitle(no, start=seconds, end, content)
 
-Bad model: Lrc / LrcLines / Srt
+Model: Lrc / LrcLines(Subtitle[]) / Srt
+
 read: str -> Lrc; dump: LrcLines -> str;
-into: LrcLines -> ...
+str (into)<=>(from) LrcLines
 '''
 
 from datetime import timedelta

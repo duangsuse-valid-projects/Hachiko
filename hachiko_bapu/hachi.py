@@ -1,7 +1,8 @@
 #!/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Any, Callable, Optional, TypeVar; T = TypeVar("T")
+from typing import Any, Callable, Optional, TypeVar, Generic
+A = TypeVar("A"); T = TypeVar("T")
 
 from argparse import ArgumentParser, FileType
 from time import time
@@ -10,13 +11,14 @@ from datetime import timedelta
 from srt import Subtitle, compose
 from json import loads, dumps, JSONDecodeError
 
-from os import environ #v disable prompt
+from os import environ, system #v disable prompt
 environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame
 
 from .hachitools import *
 from .synthesize import NoteSynth
 from pkg_resources import resource_filename
+from .funutils import let
 
 def splitAs(type, transform = int, delim = ","):
   return lambda it: type(transform(s) for s in it.split(delim))
@@ -24,17 +26,21 @@ def splitAs(type, transform = int, delim = ","):
 WINDOW_DIMEN = env("DIMEN", splitAs(tuple), (300,300))
 NAME_STDOUT = "-"
 
-backgroundColor = grayColor(env("GRAY_BACK", int, 0x30))
-textColor = grayColor(env("GRAY_TEXT", int, 0xfa))
+backgroundColor = env("COLOR_BACK", htmlColor, grayColor(0x30))
+textColor = env("COLOR_TEXT", htmlColor, grayColor(0xfa))
 fontName = env("FONT_NAME", str, "Arial")
 fontSize = env("FONT_SIZE", int, 36)
 
 askMethod = env("ASK_METHOD", str, "tk")
 playDuration = env("PLAY_DURATION", splitAs(list, transform=float), [0.3, 0.5, 1.5])
+cmdOnDone = env("HACHIKO_DONE", str, "srt2mid out")
 
 INSTRUMENT_SF2 = env("SFONT", str, resource_filename(__name__, "instrument.sf2"))
 sampleRate = env("SAMPLE_RATE", int, 44100)
-sfontPreset = 0 #< used twice
+synth = NoteSynth(sampleRate) #< used twice
+
+bgmVolume = env("BGM_VOLUME", float, None)
+bgmSpeed = env("BGM_SPEED", float, None) #TODO
 
 OCTAVE_NAMES = ["C","Cs","D","Ds","E","F","Fs","G","Gs","A","As","B"]
 OCTAVE_MAX_VALUE = 12
@@ -74,18 +80,20 @@ app.add_argument("-play", type=FileType("r"), default=None, help="music file use
 app.add_argument("-play-seek", type=float, default=0.0, help="initial seek for player")
 app.add_argument("-o", type=str, default="puzi.srt", help="output subtitle file path (default puzi.srt, can be - for stdout)")
 
+class ActionHandler(Generic[A, T]):
+  def actions(self, ctx:A, key:T): pass
 
-class RecordKeys(AsList):
-  def actions(self, ctx, k):
-    if k == '\x08': #<key delete
+class RecordKeys(AsList, ActionHandler[RefUpdate, str]):
+  def actions(self, ctx, key):
+    if key == '\x08': #<key delete
       if len(self.items) == 0: return
       rm = self.items.pop()
       ctx.show(f"!~{rm} #{len(self.items)}")
-    elif k == 'r':
+    elif key == 'r':
       play = lambda n: ctx.slides(playDuration[1], *map(lambda i: f"!{i}", self.items[-n:]), "!done")
       try: blockingAskThen(play, "n", int, str(len(self.items)))
       except ValueError: ctx.show("Invalid Count")
-    elif k == 'k':
+    elif key == 'k':
       def save(answer):
         if isinstance(answer, (list, str)): self.items = answer
         else: ctx.show(f"Not List: {answer}")
@@ -100,7 +108,7 @@ class AsSrt(AsList):
 from sys import argv, stdout, stderr
 def main(args = argv[1:]):
   cfg = app.parse_args(args)
-  global sfontPreset; sfontPreset = cfg.note_preset
+  global synth; calmSetSFont(synth, INSTRUMENT_SF2, cfg.note_preset); synth.start()
   pygame.mixer.init(sampleRate)
   pygame.init()
   rkeys = RecordKeys()
@@ -110,6 +118,7 @@ def main(args = argv[1:]):
   if cfg.o == NAME_STDOUT: stdout.write(srt)
   else:
     with open(cfg.o, "w+", encoding="utf-8") as srtf: srtf.write(srt)
+  system(cmdOnDone.replace("out", cfg.o))
 
 
 def gameWindow(caption, dimen):
@@ -126,25 +135,25 @@ def gameCenterText(text, cx=0.5, cy=0.5):
   bg.blit(rtext, textpos)
   pygame.display.flip()
 
-def clamlySetFont(synth, path, preset):
+def mainloopCall(handler):
+  for event in pygame.event.get(): handler(event)
+
+def calmSetSFont(synth, path, preset):
   try: synth.setFont(path, preset)
   except OSError: print(f"{path} is required to enable note playback!", file=stderr)
 
 def guiReadPitches(note_base:int, reducer, onKey = lambda ctx, k: (), caption = "Add Pitches"):
   gameWindow(caption, WINDOW_DIMEN)
 
-  synth = NoteSynth(sampleRate)
   def playSec(n_sec, pitch):
     synth.noteSwitch(pitch)
     timeout(n_sec, synth.noteoff)
 
-  clamlySetFont(synth, INSTRUMENT_SF2, sfontPreset)
-  synth.start()
   playSec(playDuration[1], note_base)
 
   ctx = RefUpdate("Ready~!")
   intro = ctx.slides(playDuration[2], f"0={dumpOctave(note_base)}", "[P] proceed",
-      "[-=] slide pitch", "[R]replay [K]bulk entry", "Have Fun!")
+      "[-=] slide pitch", "[R]replay [K]list", "Have Fun!")
 
   def baseSlide(n):
     nonlocal note_base
@@ -158,7 +167,7 @@ def guiReadPitches(note_base:int, reducer, onKey = lambda ctx, k: (), caption = 
     elif k == '=': baseSlide(+10)
     elif k == 'p': raise NonlocalReturn("proceed")
     elif k == '\r':
-      try: reducer.accept(readOctave(ctx.text))
+      try: reducer.accept(readOctave(ctx.item))
       except ValueError: ctx.show(":\\")
     else: onKey(ctx, k)
   def onEvent(event):
@@ -180,7 +189,7 @@ def guiReadPitches(note_base:int, reducer, onKey = lambda ctx, k: (), caption = 
 
   while True: #v main logic
     if pygame.font and ctx.hasUpdate():
-      text = ctx.text
+      text = ctx.item
       if len(text) != 0 and text[0] == '!':
         cmd = text[1:]
         if cmd == "done": synth.noteoff()
@@ -188,13 +197,12 @@ def guiReadPitches(note_base:int, reducer, onKey = lambda ctx, k: (), caption = 
         else: synth.noteSwitch(int(cmd))
       gameCenterText(text)
 
-    try:
-      for event in pygame.event.get(): onEvent(event)
+    try: mainloopCall(onEvent)
     except NonlocalReturn as exc:
       if exc.value == "proceed": break
   return reducer.finish()
 
-class CallFlagTimed(CallFlag): #< time record (op -- op1)*
+class SwitchCallTimed(SwitchCall): #< time record (op -- op1)*
   def __init__(self, op, op1):
     super().__init__(op, op1)
     self.t0 = time()
@@ -213,13 +221,10 @@ def guiReadTimeline(pitchz, reducer, play = None, play_seek = 0.0, caption = "Ad
   gameWindow(caption, WINDOW_DIMEN)
   if play != None:
     mus.load(play)
+    let(mus.set_volume, bgmVolume)
     mus.play()
 
-  synth = NoteSynth(sampleRate)
-  clamlySetFont(synth, INSTRUMENT_SF2, sfontPreset)
-  synth.start()
-
-  onPausePlay = CallFlagTimed(mus.unpause, mus.pause)
+  onPausePlay = SwitchCallTimed(mus.unpause, mus.pause)
   gameCenterText("[A]keep [S]split")
   t0 = time()
   t1 = None
@@ -254,15 +259,18 @@ def guiReadTimeline(pitchz, reducer, play = None, play_seek = 0.0, caption = "Ad
 
   def onEvent(event):
     nonlocal t0, t1
-    if event.type == pygame.KEYDOWN:
-      key = chr(event.key)
-      if key == 'a':
+    evt = event.type
+    isKdown = (evt == pygame.KEYDOWN)
+    def actButton(): return ('a' if event.button == 1 else 's')
+    if isKdown or evt == pygame.MOUSEBUTTONDOWN:
+      key = chr(event.key) if isKdown else actButton()
+      if key == 's': giveSegment(); splitNote()
+      elif key == 'a':
         t1 = time()
         splitNote()
-      elif key == 's': giveSegment(); splitNote()
-    elif event.type == pygame.KEYUP:
-      key = chr(event.key)
-      if key == 'a':
+    elif evt == pygame.KEYUP or evt == pygame.MOUSEBUTTONUP:
+      key = chr(event.key) if evt==pygame.KEYUP else actButton()
+      if key == 'a': # paired A
         synth.noteoff()
         giveSegment()
       elif key == ' ':
@@ -275,11 +283,11 @@ def guiReadTimeline(pitchz, reducer, play = None, play_seek = 0.0, caption = "Ad
       elif key == '=': # volume up
         mus.set_volume(mus.get_volume() + d_volume)
 
-    elif event.type == pygame.QUIT: raise SystemExit()
+    elif evt == pygame.QUIT: raise SystemExit()
   while True:
-    try:
-      for event in pygame.event.get(): onEvent(event)
+    try: mainloopCall(onEvent)
     except NonlocalReturn: break
+  synth.noteoff()
   return reducer.finish()
 
 if __name__ == "__main__": main()

@@ -1,10 +1,12 @@
-from typing import Any, Callable, Optional, TypeVar; T = TypeVar("T")
+from typing import Any, Callable, Optional, List, TypeVar, Generic
+T = TypeVar("T"); R = TypeVar("R")
 
 from threading import Timer
 from os import environ
 
 SEC_MS = 1000
 
+def htmlColor(c:str): return tuple(int(c[i-1:i+1], 16) for i in range(1, len(c), 2))
 def grayColor(n:int): return (n,n,n)
 
 def env(name:str, transform:Callable[[str],T], default:T) -> T:
@@ -20,34 +22,34 @@ class NonlocalReturn(Exception):
   @property
   def value(self): return self.args[0]
 
-class Fold:
+class Fold(Generic[T, R]):
   def __init__(self): pass
-  def accept(self, value): pass
-  def finish(self): pass
+  def accept(self, value:T): pass
+  def finish(self) -> R: pass
 
-class AsList(Fold):
+class AsList(Generic[T], Fold[T, List[T]]):
   def __init__(self):
     self.items = []
   def accept(self, value):
     self.items.append(value)
   def finish(self): return self.items
 
-class RefUpdate:
-  def __init__(self, initial = ""):
-    self._text = initial; self.last_text = None
+class RefUpdate(Generic[T]):
+  def __init__(self, initial:T):
+    self._item = initial; self.last_item:Optional[T] = None
   @property
-  def text(self): return self._text
-  def update(self): self.last_text = self._text
+  def item(self): return self._item
+  def _updated(self): self.last_item = self._item
 
-  def show(self, text):
-    self.update()
-    self._text = text
   def hasUpdate(self):
-    has_upd = self.last_text != self.text
-    self.update()
+    has_upd = self.last_item != self.item
+    self._updated() # used in check loop
     return has_upd
-  def slides(self, n_sec, *texts):
-    stream = iter(texts)
+  def show(self, item:T):
+    self._updated()
+    self._item = item
+  def slides(self, n_sec, *items:T):
+    stream = iter(items)
     def showNext():
       nonlocal timeouts
       try:
@@ -57,7 +59,7 @@ class RefUpdate:
     timeouts = [timeout(n_sec, showNext)]
     return timeouts
 
-class CallFlag:
+class SwitchCall:
   def __init__(self, op, op1):
     self.flag = False
     self.op, self.op1 = op, op1

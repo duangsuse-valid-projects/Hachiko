@@ -8,6 +8,9 @@ from sys import platform as sys_platform
 from os.path import isfile, abspath
 from itertools import chain
 
+def let(transform, value):
+  return transform(value) if value != None else value
+
 def require(value, p, message):
   if not p(value): raise ValueError(f"{message}: {value}")
 
