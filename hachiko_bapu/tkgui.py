@@ -1,16 +1,20 @@
-from tkinter import Frame, PanedWindow, LEFT, TOP, RIGHT, BOTTOM, Label, Button, Entry, Text, INSERT, END
-from tkinter import Radiobutton, Checkbutton, Listbox, BROWSE, Scrollbar, Scale, Spinbox
-from tkinter import LabelFrame, Menu, Menubutton, Canvas
+from tkinter import Frame, PanedWindow, LEFT, TOP, RIGHT, BOTTOM, Label, Button, Entry, Text, INSERT, END, DISABLED
+from tkinter import Radiobutton, Checkbutton, Listbox, SINGLE, MULTIPLE, BROWSE, Scrollbar, Scale, Spinbox
+from tkinter import LabelFrame, Menu, Menubutton, Canvas, PhotoImage
 from tkinter import Tk, Toplevel, X, Y, BOTH, FLAT, RAISED, HORIZONTAL, VERTICAL
 from tkinter import StringVar, BooleanVar, IntVar, DoubleVar
 from tkinter import Widget as TkWidget
+import tkinter.messagebox as tkMsgBox
+
 from functools import wraps
 from typing import NamedTuple
 
 from .tkgui_utils import EventCallback, EventPoller, useTheme
 
-from tkinter.ttk import Style, Progressbar, Combobox, Sizegrip, Notebook, Treeview
+from tkinter.ttk import Style, Separator, Progressbar, Combobox, Sizegrip, Notebook, Treeview
 if useTheme: from tkinter.ttk import * # TTK support
+
+from typing import Callable, TypeVar, Any, Optional, Union, Tuple, MutableMapping
 
 '''
 This is a declarative wrapper for Python's tkinter GUI layout support.
@@ -32,7 +36,7 @@ Notice:
 MenuItems: OpNamed(named), SubMenu, Sep(sep), CheckBox, RadioButton
 Widgets(button/bar/line/box): button, radioButton, menuButton; scrollBar, progressBar; slider, text;
   (string:)input, textarea, (number:)spinBox, (listing:)listBox, comboBox;
-  menu, separator, fill, canvas, treeWidget
+  menu, separator, withFill, withScroll, canvas, treeWidget
 Containers: HBox(horizontalLayout), VBox(verticalLayout); labeledBox, splitter, tabWidget
 
 Aux funs:
@@ -47,16 +51,16 @@ Features adopted from Teek:
 
 TODO:
 - Adopt Font, Color, Pen/Palette objects
-- Adopt Image, ScreenDistance, Varaible (maybe, but _.by is enough?)
+- Adopt Image, ScreenDistance(dimension), Varaible (maybe, but _.by is enough?)
 - Adopt Extras: Links for Textarea, and tooltips for all widgets
-- Adopt: collapse, withScroll, withDoubleScroll, Box with scrollBar
 '''
 
-def mayGive1(value, op_obj):
+T = TypeVar("T"); R = TypeVar("R")
+def mayGive1(value:T, op_obj:Union[Callable[[T], R], R]) -> R:
   '''creates a [widget]. If TkGUI switch to use DSL tree-data construct, this dynamic-type trick can be removed'''
   return op_obj(value) if callable(op_obj) else op_obj
 
-ignorableWidgetOptions = []
+rescueWidgetOption:MutableMapping[str, Callable[[str], Tuple[str, Any]]] = {}
 
 from re import search
 from _tkinter import TclError
@@ -71,13 +75,24 @@ def widget(op):
         mch = search("""unknown option "-([^"]+)"$""", str(e))
         if mch != None:
           opt = mch.groups()[0]
-          if opt in ignorableWidgetOptions: # dirty hack for tk/ttk configure compat
-            del kwargs1[opt]; return create(p)
+          rescue = rescueWidgetOption.get(opt)
+          if rescue != None: # dirty hack for tk/ttk configure compat
+            subst = rescue(kwargs1[opt])
+            if subst == None: del kwargs1[opt]
+            else: kwargs1[subst[0]] = subst[1]
+            return create(p)
         raise e
     return create
   return curry
 
 def nop(*arg): pass
+
+class EventName:
+  def __init__(self, name:str):
+    self.name = "on%s" %name.capitalize() if name.isalnum() else name
+  def __str__(self):
+    return self.name
+  __repr__ = __str__
 
 class MenuItem:
   def __init__(self, name):
@@ -132,23 +147,69 @@ class Textarea(Text):
   def start(self): return Textarea.LineCol(1, 0)
   @property
   def end(self): return self.marker["end - 1 char"]
+  @property
+  def wrap(self): return self["wrap"]
+  @wrap.setter
+  def wrap(self, v): self["wrap"] = v
 
 class TreeWidget(Treeview):
-  def makeTree(self, tree):
-    '''[tree] is a (tuple name, childs for nested) str list'''
+  def makeTree(self, headings, tree):
+    '''[tree] is a (tuple name, childs for nested), or str list'''
+    self["columns"] = headings
+    for (i, hd) in enumerate(headings): self.heading("#%d" %i, text=hd, anchor="w")
     def insert(nd, src):
       self.insert(nd, END, src, text=str(src))
     def insertRec(nd, src):
       if isinstance(src, tuple):
         (name, childs) = src
-        self.insert(nd, END, name, text=name)
+        insert(nd, name)
         for it in childs: insertRec(name, it)
       elif isinstance(src, list):
-        for it in src: insertRec(nd, it)
+        self.insert(nd, END, src[0], text=str(src[0]), values=src[1:])
       else: insert(nd, src)
-    insertRec("", tree)
-  def moveTo(self, dst, nd):
-    self.move(nd, dst, END)
+    for leaf in tree: insertRec("", leaf) # required for texts in root
+  class TreeItem:
+    def __init__(self, outter, id):
+      self._outter:TreeWidget = outter
+      self.id = id
+    def __eq__(self, other): return self.id == other.id
+    def __hash__(self): return self.id.__hash__()
+    def wrap(self, id): return TreeWidget.TreeItem(self._outter, id)
+    def isExists(self): return self._outter.exists(self.id)
+    def __getitem__(self, index): return self._outter.set(self.id, index)
+    def __setitem__(self, index, v): return self._outter.set(self.id, index, v)
+    def focus(self):
+      self._outter.see(self.id)
+      self._outter.focus(self.id)
+    def remove(self):
+      self._outter.delete(self.id)
+    def removeChilds(self):
+      self._outter.delete(*self._outter.get_children(self.id))
+    def detach(self):
+      self._outter.detach(self.id)
+    def moveTo(self, dst):
+      self._outter.move(self.id, dst, END)
+    def addChild(self, text, values=None, is_open=False) -> "TreeItem":
+      child = self._outter.insert(self.id, END, text, text=(text or ""), open=is_open, **{} if values == None else {"values":values})
+      return self.wrap(child)
+    @property
+    def parent(self) -> "TreeItem":
+      id = self._outter.parent(self.id)
+      return self.wrap(id) if id != "" else None
+    @property
+    def childs(self): return [self.wrap(it) for it in self._outter.get_children(self.id)]
+
+  def item(self, id): return TreeWidget.TreeItem(self, id)
+  @property
+  def focusItem(self): return self.item(self.focus())
+  @property
+  def selectedItems(self): return [self.item(id) for id in self.selection()]
+  def selectItems(self, items):
+    self.selection(items=[it.id for it in items])
+  @property
+  def rootItem(self): return self.item("")
+  onOpen = EventName("<<TreeviewOpen>>")
+
 
 class BaseTkGUI:
   def __init__(self, root):
@@ -188,17 +249,26 @@ class BaseTkGUI:
   @title.setter
   def title(self, v): self.tk.wm_title(v)
   @property
-  def size(self) -> tuple: return self.tk.wm_minsize()
-  def setSize(self, dim:tuple): self.tk.wm_minsize(dim[0], dim[1])
-  def setSizeMax(self, dim:tuple): self.tk.wm_maxsize(dim[0], dim[1])
-  def setGeometry(self, dim, xy=None):
+  def size(self) -> tuple:
+    code = self.tk.wm_geometry()
+    return (int(d) for d in code[0:code.index("+")].split("x"))
+  def setSize(self, dim, xy=None):
+    '''sets the actual size/position of window'''
     code = "x".join(str(i) for i in dim)
     if xy != None: code += "+%d+%d" %(xy[0],xy[1])
-    self.tk.wm_geometry()
+    self.tk.wm_geometry(code)
+  def setSizeBounds(self, min:tuple, max:tuple=None):
+    '''set [min] to (1,1) if no limit'''
+    self.tk.wm_minsize(min[0], min[1])
+    if max: self.tk.wm_maxsize(max[0], max[1])
+  def setIcon(self, path:str):
+    try: self.tk.wm_iconphoto(PhotoImage(file=path))
+    except TclError: self.tk.wm_iconbitmap(path)
   def setWindowAttributes(self, attrs): self.tk.wm_attributes(*attrs)
   @property
   def screenSize(self):
     return (self.tk.winfo_screenwidth(), self.tk.winfo_screenheight() )
+
   def focus(self): self.tk.focus_set()
   def listThemes(self): return self.style.theme_names()
   @property
@@ -208,10 +278,24 @@ class BaseTkGUI:
   def addSizeGrip(self):
     Sizegrip(self.ui).pack(side=RIGHT)
 
-  class Widget:
+  class Widget: #TODO more GUI framework support
     def pack(self): pass
     def forget(self): pass
     def destroy(self): pass
+    def bind(self, event_name:EventName, callback): return super().bind(event_name.name, callback)
+  class TkWidgetDelegate(Widget):
+    def __init__(self, e):
+      super().__init__()
+      self.e:TkWidget = e
+    def pack(self, **kwargs): return self.e.pack(**kwargs)
+    def forget(self): return self.e.forget()
+    def destroy(self): return self.e.destroy()
+    def bind(self, event_name, callback): return self.e.bind(event_name, callback)
+    def __getitem__(self, key): return self.e[key]
+    def __setitem__(self, key, v): self.e[key] = v
+    def configure(self, cnf=None, **kwargs): self.e.configure(cnf, **kwargs)
+    config = configure
+
   class Box(Frame, Widget):
     def __init__(self, parent, pad, is_vertical):
       super().__init__(parent)
@@ -252,23 +336,36 @@ class BaseTkGUI:
     def __init__(self, parent, pad=5):
       super().__init__(parent, pad, True)
 
-  class SeparatorFrame(Frame):
-    def __init__(self, parent, text, fill, *args, **kwargs):
-      self.text,self.fill = text,fill
-      super().__init__(parent, *args, **kwargs)
-    def pack(self, *args, **kwargs):
-      if self.text != None: Label(self, text=self.text).pack()
-      del kwargs["fill"]
-      super().pack(*args, fill=self.fill, expand=(self.fill == BOTH), **kwargs)
-  class PackSideFill(Widget):
-    def __init__(self, e, side, fill):
-        super().__init__()
-        self.e,self.side,self.fill = e,side,fill
+  class ScrollableFrame(Frame):
+    def __init__(self, parent, orient):
+      super().__init__(parent)
+      self.oreint = orient
+      self.hbar:Scrollbar=None; self.vbar:Scrollbar=None
+      self.item:TkWidget=None
+    def pack(self, **kwargs):
+      super().pack(**kwargs)
+      both = (self.oreint == BOTH)
+      o = self.oreint
+      if o == HORIZONTAL or both:
+        self.hbar = Scrollbar(self, orient=HORIZONTAL)
+        self.hbar.pack(side=BOTTOM, fill=X)
+      if o == VERTICAL or both:
+        self.vbar = Scrollbar(self, orient=VERTICAL)
+        self.vbar.pack(side=RIGHT, fill=Y)
+      self.item.pack()
+      if self.hbar: TkGUI.bindXScrollBar(self.item, self.hbar)
+      if self.vbar: TkGUI.bindYScrollBar(self.item, self.vbar)
+
+  class PackSideFill(TkWidgetDelegate):
+    def __init__(self, e, side:Optional[str], fill):
+        super().__init__(e)
+        self.side,self.fill = side,fill
+    def reside(self, new_side):
+      return type(self)(self.e, new_side, self.fill)
     def pack(self, *args, **kwargs):
       kwargs.update({"side": self.side or kwargs.get("side"), "fill": self.fill, "expand": self.fill == BOTH})
       self.e.pack(*args, **kwargs)
-    def forget(self): return self.e.forget()
-    def destroy(self): return self.e.destroy()
+    def set(self, *args): return self.e.set(*args)
 
   @staticmethod
   def _createLayout(ctor_box, p, items):
@@ -310,9 +407,10 @@ class BaseTkGUI:
     return Label(p, **kwargs)
   @staticmethod
   @widget
-  def textarea(p, placeholder=None, **kwargs):
+  def textarea(p, placeholder=None, readonly=False, **kwargs):
     text = Textarea(p, **kwargs)
     if placeholder != None: text.insert(INSERT, placeholder)
+    if readonly: text["state"] = DISABLED
     return text
   @staticmethod
   @widget
@@ -354,8 +452,9 @@ class BaseTkGUI:
       variable=dst, onvalue=a, offvalue=b, command=nop)
   @staticmethod
   @widget
-  def listBox(p, items, mode=BROWSE, **kwargs):
-    lbox = Listbox(p, selectmode=mode, **kwargs)
+  def listBox(p, items, mode=SINGLE, **kwargs):
+    mode1 = BROWSE if mode == SINGLE else mode
+    lbox = Listbox(p, selectmode=mode1, **kwargs)
     for (i, it) in enumerate(items): lbox.insert(i, it)
     return lbox
   @staticmethod
@@ -381,12 +480,11 @@ class BaseTkGUI:
     return lbox
   @staticmethod
   @widget
-  def separator(p, text=None, fill=X, height=2, bg="white", relief=FLAT):
-    extras = {} if useTheme else {"bg":bg, "bd":1}
-    return TkGUI.SeparatorFrame(p, text, fill, height=height, relief=relief, **extras)
+  def separator(p, orient=HORIZONTAL):
+    return Separator(p, orient=orient)
   @staticmethod
   @widget
-  def splitter(p, orient, *items, **kwargs):
+  def splitter(p, orient, *items, weights=None, **kwargs): #TODO
     paned_win = PanedWindow(p, orient=orient, **kwargs)
     for it in items: paned_win.add(mayGive1(paned_win, it))
     return paned_win
@@ -397,13 +495,20 @@ class BaseTkGUI:
     tab = Notebook(p)
     for (name, e_ctor) in entries:
       e = mayGive1(tab, e_ctor)
-      if isinstance(e, BaseTkGUI.Box): e.pack() # in tabs, should pack early
+      if isinstance(e, TkGUI.Box): e.pack() # in tabs, should pack early
       tab.add(e, text=name)
     return tab
   @staticmethod
   @widget
-  def fill(p, e_ctor, fill=BOTH, side=None):
+  def withFill(p, e_ctor, fill=BOTH, side=None):
     return TkGUI.PackSideFill(mayGive1(p, e_ctor), side, fill)
+  @staticmethod
+  @widget
+  def withScroll(p, orient, e_ctor):
+    '''must call setup() to bind scroll in setup()'''
+    frame = TkGUI.ScrollableFrame(p, orient)
+    frame.item = mayGive1(frame, e_ctor)
+    return frame
   @staticmethod
   @widget
   def canvas(p, dim, **kwargs):
@@ -411,23 +516,42 @@ class BaseTkGUI:
     return Canvas(p, width=width, height=height, **kwargs)
   @staticmethod
   @widget
-  def treeWidget(p):
-    treev = TreeWidget(p)
+  def treeWidget(p, mode=SINGLE):
+    mode1 = BROWSE if mode == SINGLE else mode
+    treev = TreeWidget(p, selectmode=mode1)
     return treev
 
   hor = HORIZONTAL
   vert = VERTICAL
+  both = BOTH
   left,top,right,bottom = LEFT,TOP,RIGHT,BOTTOM
   raised,flat=RAISED,FLAT
   at_cursor,at_end=INSERT,END
+  choose_single,choose_multi = SINGLE,MULTIPLE
+  class Anchors:
+    LT="NW"; TOP="N"; RT="NE"
+    L="W"; CENTER="CENTER"; R="E"
+    LD="SW"; BOTTOM="S"; RD="SE"
 
-  class Event:
-    click = "<Button-1>"
-    doubleClick = "<Double 1>"
-    mouseM = "<Button-2>"
-    mouseR = "<Button-3>"
-    key = "<Key>"
-    enter = "<Enter>"; leave = "<Leave>"
+  class Cursors:
+    arrow="arrow"; deny="circle"
+    wait="watch"
+    cross="cross"; move="fleur"; kill="pirate"
+
+  class Events:
+    click = EventName("<Button-1>")
+    doubleClick = EventName("<Double 1>")
+    mouseM = EventName("<Button-2>")
+    mouseR = EventName("<Button-3>")
+    key = EventName("<Key>")
+    enter = EventName("<Enter>"); leave = EventName("<Leave>")
+
+  def alert(self, msg, title=None, kind="info"):
+    tie = title or kind.capitalize()
+    if kind == "info": tkMsgBox.showinfo(msg, tie)
+    elif kind == "warn": tkMsgBox.showwarning(msg, tie)
+    elif kind == "error": tkMsgBox.showerror(msg, tie)
+    else: raise ValueError("unknown kind: "+kind)
 
   @staticmethod
   def connect(sender, signal, receiver, slot):
@@ -437,18 +561,18 @@ class BaseTkGUI:
     listen = receiver.__getattribute__(slot) if not callable(slot) else runProc
     sender[signal+"command"] = listen
   @staticmethod
-  def bindScrollBarY(_, b, _1, v, *args): b.yview_moveto(v)
+  def _bindScrollBarY(a, b, evt, v, *args): b.yview_moveto(v)
   @staticmethod
-  def bindScrollBarX(_, b, _1, v, *args): b.xview_moveto(v)
+  def _bindScrollBarX(a, b, evt, v, *args): b.xview_moveto(v)
 
   @staticmethod
   def bindYScrollBar(box, bar):
-    TkGUI.connect(box, "yscroll", bar.e, "set")
-    TkGUI.connect(bar.e, "", box, TkGUI.bindScrollBarY)
+    TkGUI.connect(box, "yscroll", bar, "set")
+    TkGUI.connect(bar, "", box, TkGUI._bindScrollBarY)
   @staticmethod
   def bindXScrollBar(box, bar):
-    TkGUI.connect(box, "xscroll", bar.e, "set")
-    TkGUI.connect(bar.e, "", box, TkGUI.bindScrollBarX)
+    TkGUI.connect(box, "xscroll", bar, "set")
+    TkGUI.connect(bar, "", box, TkGUI._bindScrollBarX)
 
 class TkGUI(BaseTkGUI, EventPoller):
   root:"TkGUI" = None
@@ -511,5 +635,4 @@ def thunkifySync(op, *args, **kwargs):
 
 from time import sleep
 def delay(msec):
-  sleep(msec/1000)
-  return lambda cb: cb(msec)
+  return lambda cb: Thread(target=lambda ms, cb1: cb1(sleep(msec/1000)), args=(msec, cb)).start()

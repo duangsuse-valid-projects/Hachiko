@@ -5,6 +5,16 @@ from sys import stderr
 
 from tkinter import Tk
 
+from platform import system as platformName #< for startFile
+from subprocess import call as startSubProcess
+def startFile(path:str):
+  name = platformName()
+  def run(prog): startSubProcess((prog, path))
+  if name == "Darwin": run("open")
+  elif name == "Windows":
+    __import__("os").startfile(path)
+  else: run("xdg-open") # POSIX
+
 MSG_CALL_FROM_THR_MAIN = "call from main thread."
 MSG_CALLED_TWICE = "called twice"
 NOT_THREADSAFE = RuntimeError("call initLooper() first")
