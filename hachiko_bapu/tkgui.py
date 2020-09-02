@@ -5,14 +5,17 @@ from tkinter import Tk, Toplevel, X, Y, BOTH, FLAT, RAISED, HORIZONTAL, VERTICAL
 from tkinter import StringVar, BooleanVar, IntVar, DoubleVar
 from tkinter import Widget as TkWidget
 import tkinter.messagebox as tkMsgBox
+import tkinter.filedialog as tkFileMsgBox
 
 from functools import wraps
 from typing import NamedTuple
 
-from .tkgui_utils import EventCallback, EventPoller, useTheme
+from .tkgui_utils import EventCallback, EventPoller, guiBackend, Backend, Codegen
+from .tkgui_utils import guiCodegen as c
 
 from tkinter.ttk import Style, Separator, Progressbar, Combobox, Sizegrip, Notebook, Treeview
-if useTheme: from tkinter.ttk import * # TTK support
+if guiBackend == Backend.TTk:
+  from tkinter.ttk import * # TTK support
 
 from typing import Callable, TypeVar, Any, Optional, Union, Tuple, MutableMapping
 
@@ -35,9 +38,10 @@ Notice:
 
 MenuItems: OpNamed(named), SubMenu, Sep(sep), CheckBox, RadioButton
 Widgets(button/bar/line/box): button, radioButton, menuButton; scrollBar, progressBar; slider, text;
-  (string:)input, textarea, (number:)spinBox, (listing:)listBox, comboBox;
-  menu, separator, withFill, withScroll, canvas, treeWidget
-Containers: HBox(horizontalLayout), VBox(verticalLayout); labeledBox, splitter, tabWidget
+  (string:)input, textarea, (number:)spinBox, (boolean:)checkBox, (listing:)listBox, comboBox;
+  menu, separator, canvas, treeWidget
+Containers: HBox(horizontalLayout), VBox(verticalLayout); labeledBox,
+  splitter, tabWidget, withFill, withScroll
 
 Aux funs:
 - _.fill(widget) can make a widget(.e) packed at specified side/fill
@@ -53,12 +57,20 @@ TODO:
 - Adopt Font, Color, Pen/Palette objects
 - Adopt Image, ScreenDistance(dimension), Varaible (maybe, but _.by is enough?)
 - Adopt Extras: Links for Textarea, and tooltips for all widgets
+- Make window object like GTK: isDecorated, modal, position
 '''
 
 T = TypeVar("T"); R = TypeVar("R")
 def mayGive1(value:T, op_obj:Union[Callable[[T], R], R]) -> R:
   '''creates a [widget]. If TkGUI switch to use DSL tree-data construct, this dynamic-type trick can be removed'''
   return op_obj(value) if callable(op_obj) else op_obj
+
+def kwargsNotNull(**kwargs):
+  to_del = []
+  for key in kwargs:
+    if kwargs[key] == None: to_del.append(key)
+  for key in to_del: del kwargs[key]
+  return kwargs
 
 rescueWidgetOption:MutableMapping[str, Callable[[str], Tuple[str, Any]]] = {}
 
@@ -69,7 +81,7 @@ def widget(op):
   '''make a "create" with kwargs configuration = lambda parent: '''
   def curry(*args, **kwargs):
     kwargs1 = kwargs
-    def create(p):
+    def createWidget(p): #< cg: NO modify
       try: return op(p, *args, **kwargs1)
       except TclError as e:
         mch = search("""unknown option "-([^"]+)"$""", str(e))
@@ -80,9 +92,9 @@ def widget(op):
             subst = rescue(kwargs1[opt])
             if subst == None: del kwargs1[opt]
             else: kwargs1[subst[0]] = subst[1]
-            return create(p)
+            return createWidget(p)
         raise e
-    return create
+    return createWidget
   return curry
 
 def nop(*arg): pass
@@ -190,7 +202,7 @@ class TreeWidget(Treeview):
     def moveTo(self, dst):
       self._outter.move(self.id, dst, END)
     def addChild(self, text, values=None, is_open=False) -> "TreeItem":
-      child = self._outter.insert(self.id, END, text, text=(text or ""), open=is_open, **{} if values == None else {"values":values})
+      child = self._outter.insert(self.id, END, text, text=(text or ""), open=is_open, **kwargsNotNull(values=values))
       return self.wrap(child)
     @property
     def parent(self) -> "TreeItem":
@@ -210,11 +222,10 @@ class TreeWidget(Treeview):
   def rootItem(self): return self.item("")
   onOpen = EventName("<<TreeviewOpen>>")
 
-
 class BaseTkGUI:
   def __init__(self, root):
     self.tk:Toplevel = root
-    self.ui:TkWidget = None #>layout
+    self.ui:Optional[TkWidget] = None #>layout
     self.style:Style = Style(self.tk)
   def layout(self) -> "Widget":
     '''
@@ -226,13 +237,13 @@ class BaseTkGUI:
   def setup(self): pass
 
   def var(self, type, initial=None, var_map = {str: StringVar, bool: BooleanVar, int: IntVar, float: DoubleVar}):
-    variable = var_map[type](self.tk)
-    if initial != None: variable.set(initial)
+    variable = c.callNew(var_map[type], self.tk)
+    if initial != None: c.invoke(variable, "set", initial)
     return variable
   def by(self, attr, e_ctor):
     def createAssign(p):
       e = mayGive1(p, e_ctor)
-      self.__setattr__(attr, e); return e
+      c.setAttr(self, attr, e); return e
     return createAssign
   @property
   def underscore(self) -> "BaseTkGUI": return self
@@ -244,6 +255,13 @@ class BaseTkGUI:
     self.ui.pack()
     self.setup()
     self.focus(); self.tk.mainloop()
+  def getCode(self, run=False) -> str:
+    Codegen.isEnabled = True
+    if run: self.run()
+    ui = self.ui or mayGive1(self.tk, self.layout())
+    code = Codegen.getCode()
+    Codegen.isEnabled = False
+    return code
   @property
   def title(self) -> str: return self.tk.wm_title()
   @title.setter
@@ -251,18 +269,18 @@ class BaseTkGUI:
   @property
   def size(self) -> tuple:
     code = self.tk.wm_geometry()
-    return (int(d) for d in code[0:code.index("+")].split("x"))
+    return (int(d) for d in code[0:code.index("+")].split("x")) #cg:todo?
   def setSize(self, dim, xy=None):
     '''sets the actual size/position of window'''
     code = "x".join(str(i) for i in dim)
     if xy != None: code += "+%d+%d" %(xy[0],xy[1])
-    self.tk.wm_geometry(code)
+    c.invoke(self.tk, "wm_geometry", code)
   def setSizeBounds(self, min:tuple, max:tuple=None):
     '''set [min] to (1,1) if no limit'''
-    self.tk.wm_minsize(min[0], min[1])
-    if max: self.tk.wm_maxsize(max[0], max[1])
+    c.invoke(self.tk, "wm_minsize", min[0], min[1])
+    if max: c.invoke(self.tk, "wm_maxsize", max[0], max[1])
   def setIcon(self, path:str):
-    try: self.tk.wm_iconphoto(PhotoImage(file=path))
+    try: c.invoke(self.tk, "wm_iconphoto", c.callNew(PhotoImage, file=path) ) #cg:note
     except TclError: self.tk.wm_iconbitmap(path)
   def setWindowAttributes(self, attrs): self.tk.wm_attributes(*attrs)
   @property
@@ -276,7 +294,8 @@ class BaseTkGUI:
   @theme.setter
   def theme(self, v): return self.style.theme_use(v)
   def addSizeGrip(self):
-    Sizegrip(self.ui).pack(side=RIGHT)
+    sg = c.callNew(Sizegrip, self.ui)
+    c.invoke(sg, "pack", side=RIGHT)
 
   class Widget: #TODO more GUI framework support
     def pack(self): pass
@@ -369,29 +388,35 @@ class BaseTkGUI:
 
   @staticmethod
   def _createLayout(ctor_box, p, items):
-    box = ctor_box(p)
-    box.childs = list(mayGive1(box, it) for it in items)
+    box = c.named("box", c.callNew(ctor_box, p))
+    c.setAttr(box, "childs", list(mayGive1(box, it) for it in items))
     return box
   @staticmethod
-  def verticalLayout(*items): return lambda p: TkGUI._createLayout(TkGUI.VBox, p, items)
+  def verticalLayout(*items): return lambda p: c.named("lv", TkGUI._createLayout(TkGUI.VBox, p, items))
   @staticmethod
-  def horizontalLayout(*items): return lambda p: TkGUI._createLayout(TkGUI.HBox, p, items)
+  def horizontalLayout(*items): return lambda p: c.named("lh", TkGUI._createLayout(TkGUI.HBox, p, items))
+  @staticmethod
+  @widget
+  def createLayout(p, orient, pad, *items):
+    box = c.named("box", c.callNew(TkGUI.HBox, p, pad) if orient == HORIZONTAL else c.callNew(TkGUI.VBox, p, pad))
+    c.setAttr(box, "childs", list(mayGive1(box, it) for it in items))
+    return box
 
   @staticmethod
   @widget
   def menu(p, *items, use_default_select = False):
-    e_menu = Menu(p, tearoff=use_default_select)
+    e_menu = c.callNew(Menu, p, tearoff=use_default_select)
     for it in items:
       if isinstance(it, MenuItem.OpNamed):
-        e_menu.add_command(label=it.name, command=it.op)
+        c.invoke(e_menu, "add_command", label=it.name, command=it.op)
       elif isinstance(it, MenuItem.SubMenu):
-        child = TkGUI.menu(*it.childs, use_default_select)(e_menu)
-        e_menu.add_cascade(label=it.name, menu=child)
-      elif isinstance(it, MenuItem.Sep): e_menu.add_separator()
-      elif isinstance(it, MenuItem.CheckBox): e_menu.add_checkbutton(label=it.name, variable=it.dst)
-      elif isinstance(it, MenuItem.RadioButton): e_menu.add_radiobutton(label=it.name, variable=it.dst, value=it.value)
+        child = c.call(TkGUI.menu(*it.childs, use_default_select), e_menu) # cg:flatten
+        c.invoke(e_menu, "add_cascade", label=it.name, menu=child)
+      elif isinstance(it, MenuItem.Sep): c.invoke(e_menu, "add_separator")
+      elif isinstance(it, MenuItem.CheckBox): c.invoke(e_menu, "add_checkbutton", label=it.name, variable=it.dst)
+      elif isinstance(it, MenuItem.RadioButton): c.invoke(e_menu, "add_radiobutton", label=it.name, variable=it.dst, value=it.value)
     return e_menu
-  def setMenu(self, menu_ctor):
+  def setMenu(self, menu_ctor): #cg!
     self.tk["menu"] = menu_ctor(self.tk)
   def makeMenuPopup(self, menu_ctor):
     menu = mayGive1(self.tk, menu_ctor)
@@ -404,122 +429,128 @@ class BaseTkGUI:
   @widget
   def text(p, valr, **kwargs):
     kwargs["textvariable" if isinstance(valr, StringVar) else "text"] = valr
-    return Label(p, **kwargs)
+    return c.callNew(Label, p, **kwargs)
   @staticmethod
   @widget
   def textarea(p, placeholder=None, readonly=False, **kwargs):
-    text = Textarea(p, **kwargs)
-    if placeholder != None: text.insert(INSERT, placeholder)
-    if readonly: text["state"] = DISABLED
+    text = c.callNew(Textarea, p, **kwargs)
+    if placeholder != None: c.invoke(text, "insert", INSERT, placeholder)
+    if readonly: c.setItem(text, "state", DISABLED)
     return text
   @staticmethod
   @widget
   def button(p, text, on_click, **kwargs):
-    return Button(p, text=text, command=on_click, **kwargs)
+    return c.callNew(Button, p, text=text, command=on_click, **kwargs)
   @staticmethod
   @widget
   def radioButton(p, text, dst, value, on_click=nop):
-    return Radiobutton(p, text=text, variable=dst, value=value, command=on_click)
+    return c.callNew(Radiobutton, p, text=text, variable=dst, value=value, command=on_click)
   @staticmethod
   @widget
   def menuButton(p, text, menu_ctor, **kwargs):
-    menub = Menubutton(p, text=text, **kwargs)
-    menub["menu"] = mayGive1(menub, menu_ctor)
+    menub = c.callNew(Menubutton, p, text=text, **kwargs)
+    c.setItem(menub, "menu", mayGive1(menub, menu_ctor))
     return menub
   @staticmethod
   @widget
   def input(p, placeholder="", **kwargs):
-    ent = Entry(p, **kwargs)
-    ent.delete(0, END)
-    ent.insert(0, placeholder)
+    ent = c.named("ent", c.callNew(Entry, p, **kwargs))
+    c.invoke(ent, "delete", 0, END)
+    c.invoke(ent, "insert", 0, placeholder)
     return ent
   @staticmethod
   @widget
   def spinBox(p, range:range, **kwargs):
-    if range.step != 1: return Spinbox(p, values=tuple(range), **kwargs)
-    else: return Spinbox(p, from_=range.start, to=range.stop-1, **kwargs)
+    if range.step != 1: return c.callNew(Spinbox, p, values=tuple(range), **kwargs)
+    else: return c.callNew(Spinbox, p, from_=range.start, to=range.stop-1, **kwargs)
   @staticmethod
   @widget
   def slider(p, range:range, **kwargs):
-    if not useTheme: kwargs["resolution"] = range.step
-    return Scale(p, from_=range.start, to=range.stop-1, **kwargs)
+    if guiBackend == Backend.Tk: kwargs["resolution"] = range.step
+    return c.callNew(Scale, p, from_=range.start, to=range.stop-1, **kwargs)
   @staticmethod
   @widget
   def checkBox(p, text_valr, dst, a=True, b=False, on_click=nop):
     '''make [text_valr] and [dst] points to same if you want to change text when checked'''
     valr = text_valr
-    return Checkbutton(p, **{"textvariable" if isinstance(valr, StringVar) else "text": valr}, 
-      variable=dst, onvalue=a, offvalue=b, command=nop)
+    cbox = c.named("cbox", c.callNew(Checkbutton, p, **{"textvariable" if isinstance(valr, StringVar) else "text": valr}, 
+      variable=dst, onvalue=a, offvalue=b, command=nop))
+    return cbox
   @staticmethod
   @widget
   def listBox(p, items, mode=SINGLE, **kwargs):
     mode1 = BROWSE if mode == SINGLE else mode
-    lbox = Listbox(p, selectmode=mode1, **kwargs)
-    for (i, it) in enumerate(items): lbox.insert(i, it)
+    lbox = c.named("lbox", c.callNew(Listbox, p, selectmode=mode1, **kwargs))
+    c.forEachIndexed(items, lambda i, it: c.invoke(lbox, "insert", i, it))
     return lbox
   @staticmethod
   @widget
   def comboBox(p, items):
-    cbox = Combobox(p)
-    for (i, it) in enumerate(items): cbox.insert(i, it)
-    return cbox
+    cmbox = c.callNew(Combobox, p)
+    c.forEachIndexed(items, lambda i, it: c.invoke(cmbox, "insert", i, it))
+    return cmbox
   @staticmethod
   @widget
   def scrollBar(p, orient=VERTICAL):
-    return TkGUI.PackSideFill(Scrollbar(p, orient=orient), None, Y if orient==VERTICAL else X)
+    scroll = c.callNew(Scrollbar, p, orient=orient)
+    sbar = c.callNew(TkGUI.PackSideFill, scroll, None, Y if orient==VERTICAL else X)
+    return c.named("sbar", sbar)
   @staticmethod
   @widget
   def progressBar(p, dst, orient=HORIZONTAL):
-    return Progressbar(p, variable=dst, orient=orient)
+    return c.CallNew(Progressbar, p, variable=dst, orient=orient)
+
+  @staticmethod
+  @widget
+  def separator(p, orient=HORIZONTAL):
+    return c.callNew(Separator, p, orient=orient)
+  @staticmethod
+  @widget
+  def canvas(p, dim, **kwargs):
+    (width,height) = dim
+    return c.callNew(Canvas, p, width=width, height=height, **kwargs)
+  @staticmethod
+  @widget
+  def treeWidget(p, mode=SINGLE):
+    mode1 = BROWSE if mode == SINGLE else mode
+    treev = c.callNew(TreeWidget, p, selectmode=mode1)
+    return treev
 
   @staticmethod
   @widget
   def labeledBox(p, text, *items, **kwargs):
-    lbox = TkGUI.PackSideFill(LabelFrame(p, text=text, **kwargs), None, BOTH)
-    for it in items: mayGive1(lbox.e, it).pack()
-    return lbox
-  @staticmethod
-  @widget
-  def separator(p, orient=HORIZONTAL):
-    return Separator(p, orient=orient)
+    box = c.callNew(LabelFrame, p, text=text, **kwargs)
+    lbox = c.callNew(TkGUI.PackSideFill, box, None, BOTH)
+    for it in items: c.invoke(mayGive1(lbox.e, it), "pack")
+    return c.named("lbox", lbox)
   @staticmethod
   @widget
   def splitter(p, orient, *items, weights=None, **kwargs): #TODO
-    paned_win = PanedWindow(p, orient=orient, **kwargs)
-    for it in items: paned_win.add(mayGive1(paned_win, it))
+    paned_win = c.callNew(PanedWindow, p, orient=orient, **kwargs)
+    for it in items: c.invoke(paned_win, "add", mayGive1(paned_win, it))
     return paned_win
   @staticmethod
   @widget
   def tabWidget(p, *entries):
     '''you may want tabs to fill whole window, use [fill].'''
-    tab = Notebook(p)
+    tab = c.callNew(Notebook, p)
     for (name, e_ctor) in entries:
       e = mayGive1(tab, e_ctor)
-      if isinstance(e, TkGUI.Box): e.pack() # in tabs, should pack early
-      tab.add(e, text=name)
-    return tab
+      if isinstance(e, TkGUI.Box): c.invoke(e, "pack") # in tabs, should pack early
+      c.invoke(tab, "add", e, text=name)
+    return c.named("tab", tab)
   @staticmethod
   @widget
   def withFill(p, e_ctor, fill=BOTH, side=None):
-    return TkGUI.PackSideFill(mayGive1(p, e_ctor), side, fill)
+    filler = c.callNew(TkGUI.PackSideFill, mayGive1(p, e_ctor), side, fill)
+    return c.named("filler", filler)
   @staticmethod
   @widget
   def withScroll(p, orient, e_ctor):
     '''must call setup() to bind scroll in setup()'''
-    frame = TkGUI.ScrollableFrame(p, orient)
-    frame.item = mayGive1(frame, e_ctor)
-    return frame
-  @staticmethod
-  @widget
-  def canvas(p, dim, **kwargs):
-    (width,height) = dim
-    return Canvas(p, width=width, height=height, **kwargs)
-  @staticmethod
-  @widget
-  def treeWidget(p, mode=SINGLE):
-    mode1 = BROWSE if mode == SINGLE else mode
-    treev = TreeWidget(p, selectmode=mode1)
-    return treev
+    frame = c.callNew(TkGUI.ScrollableFrame, p, orient)
+    c.setAttr(frame, "item", mayGive1(frame, e_ctor))
+    return c.named("scrolld", frame)
 
   hor = HORIZONTAL
   vert = VERTICAL
@@ -553,8 +584,22 @@ class BaseTkGUI:
     elif kind == "error": tkMsgBox.showerror(msg, tie)
     else: raise ValueError("unknown kind: "+kind)
 
+  def ask(self, msg, title="Question") -> bool: return tkMsgBox.askquestion(title, msg)
+  def askCancel(self, msg, title="Proceed?") -> bool: return not tkMsgBox.askokcancel(title, msg)
+  def askOrNull(self, msg, title="Question") -> Optional[bool]: return tkMsgBox.askyesnocancel(title, msg)
+
+  def askOpen(self, file_types, title=None, initial_dir=None, mode=SINGLE) -> str:
+    '''ask path(s) to open, with file types and (optional)title, init dir'''
+    kws = kwargsNotNull(filetypes=file_types, title=title, initialdir=initial_dir)
+    return tkFileMsgBox.askopenfilename(**kws) if mode == SINGLE else tkFileMsgBox.askopenfilenames(**kws)
+  def askSave(self, default_extension, file_types, title=None, initial=None, initial_dir=None) -> str:
+    '''ask path (initial) to save to, with choosed file type'''
+    kws = kwargsNotNull(title=title, initialfile=initial, initialdir=initial_dir)
+    return tkFileMsgBox.asksaveasfilename(defaultextension=default_extension, filetypes=file_types, **kws)
+  def askSaveDir(self, title=None) -> str: return tkFileMsgBox.askdirectory(**kwargsNotNull(title=title))
+
   @staticmethod
-  def connect(sender, signal, receiver, slot):
+  def connect(sender, signal, receiver, slot): #cg!
     ''' connects a command from [sender] to notify [receiver].[slot], or call slot(sender, receiver, *signal_args) '''
     def runProc(*arg, **kwargs):
       return slot(sender, receiver, *arg, **kwargs)
@@ -579,9 +624,11 @@ class TkGUI(BaseTkGUI, EventPoller):
   def __init__(self):
     if TkGUI.root != None: raise RuntimeError("TkGUI is singleton, should not created twice")
     super().__init__(Tk())
-    self.on_quit = EventCallback()
     EventPoller.__init__(self)
+    self.on_quit = EventCallback()
     TkGUI.root = self
+    c.named("tkgui", self, is_extern=True)
+    c.named("root", self.tk, is_extern=True)
     self.tk.bind("<Destroy>", lambda _: self.on_quit.run())
   def quit(self):
     self.tk.destroy()
@@ -635,4 +682,4 @@ def thunkifySync(op, *args, **kwargs):
 
 from time import sleep
 def delay(msec):
-  return lambda cb: Thread(target=lambda ms, cb1: cb1(sleep(msec/1000)), args=(msec, cb)).start()
+  return lambda cb: Thread(target=lambda cb1: cb1(sleep(msec/1000)), args=(cb,)).start()

@@ -1,9 +1,12 @@
 from argparse import ArgumentParser, FileType
 from json import loads, dumps
 
-from tkinter import Menu
+
+from .tkgui_utils import startFile, Backend
+Backend.TTk.use()
+
 from .tkgui import TkGUI, TkWin, MenuItem, TreeWidget, nop, Timeout, callThreadSafe, thunkifySync, delay, runAsync, rescueWidgetOption
-from .tkgui_utils import startFile
+from tkinter import Menu
 
 import threading, time, requests
 import os
@@ -105,9 +108,6 @@ class GUI(TkGUI):
           _.text("bottom pane")
         )
       ))
-    def setup(self):
-      self.button("WTF", nop)(self.cf).grid(row=1,column=2)
-      self.checkBox("GG", "check me", self.var(bool))(self.cf).grid(row=2,column=3)
   class DoNothing(TkWin):
     def __init__(self):
       super().__init__()
@@ -166,8 +166,8 @@ class GUI(TkGUI):
       _ = self.underscore
       return _.verticalLayout(
         _.by("ta", _.textarea()),
-        _.horizontalLayout(_.text("Total active cases: ~"), _.text(self.active)),
-        _.horizontalLayout(_.text("Total confirmed cases: ~"), _.text(self.confirmed)),
+        _.createLayout(_.hor, 0, _.text("Total active cases: ~"), _.text(self.active)),
+        _.createLayout(_.vert, 0, _.text("Total confirmed cases:"), _.text(self.confirmed)),
         _.button("Refresh", self.on_refresh)
       )
     url = "https://api.covid19india.org/data.json"
@@ -182,9 +182,10 @@ class GUI(TkGUI):
       self.confirmed.set(data["statewise"][0]["confirmed"])
       self.btn_refresh["text"] = "Data refreshed"
     def setup(self):
-      self.setSize((220, 70), (0,0))
+      self.setSizeBounds((220, 70))
       threading.Thread(target=self.thread_target).start()
     def thread_target(self):
+      callThreadSafe(lambda: self.setSize(self.size, (0,0)))
       def addText(text): callThreadSafe(lambda: self.ta.insert("end", text))
       addText('doing things...\n')
       time.sleep(1)
