@@ -3,6 +3,7 @@ from json import loads, dumps
 
 
 from .tkgui_utils import startFile, Backend
+from .tkgui_utils import guiCodegen as c
 Backend.TTk.use()
 
 from .tkgui import TkGUI, TkWin, MenuItem, TreeWidget, nop, Timeout, callThreadSafe, thunkifySync, delay, runAsync, rescueWidgetOption
@@ -23,22 +24,21 @@ app.add_argument("-import", type=str, default=None, help="import a sentence list
 rescueWidgetOption["relief"] = lambda _: None
 
 class GUI(TkGUI):
-  def __init__(self):
-    super().__init__()
-    var = self.var
-    self.a, self.b, self.c = var(str, "some"), var(bool), var(int)
   def up(self):
     self.a.set("wtf")
     self.ui.removeChild(self.ui.lastChild)
     GUI.ThreadDemo().run("Thread Demo")
+  def pr(self):
+    print(self.c.get())
+    self.ui.removeChild(self.ui.childs[5])
   def layout(self):
     _ = self.underscore
-    def pr():
-      print(self.c.get())
-      self.ui.removeChild(self.ui.childs[5])
+    c.setAttr(self, "a", _.var(str, "some"))
+    c.setAttr(self, "b", _.var(bool))
+    c.setAttr(self, "c", _.var(int))
     def addChild(): self.ui.appendChild(_.text("hhh"))
     return _.verticalLayout(
-      _.button("Yes", lambda: self.quit()),
+      _.button("Yes", self.quit),
       _.text(self.a),
       _.button("Change", self.up),
       _.horizontalLayout(_.text("ex"), _.text("wtf"), _.button("emmm",addChild), _.text("aa")),
@@ -47,7 +47,7 @@ class GUI(TkGUI):
       _.withScroll(_.vert, _.by("ta", _.textarea("wtf"))),
       _.by("ah", _.text("ah")),
       _.checkBox("Some", self.b),
-      _.horizontalLayout(_.radioButton("Wtf", self.c, 1, pr), _.radioButton("emm", self.c, 2, pr)),
+      _.horizontalLayout(_.radioButton("Wtf", self.c, 1, self.pr), _.radioButton("emm", self.c, 2, self.pr)),
       _.horizontalLayout(
         _.by("sbar", _.scrollBar(_.vert)),
         _.verticalLayout(
@@ -56,13 +56,17 @@ class GUI(TkGUI):
         )
       ),
       _.withScroll(_.both, _.by("box", _.listBox(("1 2 3  apple juicy lamb clamp banana  "*20).split("  ")))),
+      _.comboBox(self.a, "hello cruel world".split(" ")),
       _.spinBox(range(0, 100+1, 10)),
       _.slider(range(0, 100+1, 2), orient=_.hor),
-      _.button("hello", lambda: GUI.Layout1().run("Hello")),
-      _.button("split", lambda: GUI.SplitWin().run("Split")),
+      _.button("hello", self.run1),
+      _.button("split", self.run2),
       _.menuButton("kind", _.menu(MenuItem.CheckBox("wtf", self.b), MenuItem.RadioButton("emm", self.c, 9)), relief=_.raised),
-      _.labeledBox("emmm", _.button("Dangerous", lambda: print(self.ta.marker["insert"])))
+      _.labeledBox("emmm", _.button("Dangerous", self.run3))
     )
+  def run1(self): GUI.Layout1().run("Hello")
+  def run2(self): GUI.SplitWin().run("Split")
+  def run3(self): print(self.ta.marker["insert"])
   def setup(self):
     _ = self.underscore
     _.bindYScrollBar(self.lbox, self.sbar)
@@ -194,7 +198,10 @@ class GUI(TkGUI):
       addText('done')
 
 from sys import argv
+from .tkgui_utils import Codegen
 def main(args = argv[1:]):
   cfg = app.parse_args(args)
   gui = GUI()
-  gui.run("Record Groups")
+  #gui.run("Application")
+  Codegen.useDebug = True
+  gui.runCode(gui.getCode(False), GUI=gui, TkGUI=gui)

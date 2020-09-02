@@ -3,7 +3,7 @@ import traceback
 import queue
 from sys import stderr
 
-from tkinter import Tk
+from tkinter import Tk, Toplevel
 
 from traceback import extract_stack #codegen autoname
 
@@ -43,7 +43,6 @@ class Backend:
   fallbackOrder = [GTK, Wx, TTk, Tk]
 guiBackend = Backend.TTk
 
-
 class SyntaxFmt:
   '''some language-sepcific syntax formatters'''
   @staticmethod
@@ -54,19 +53,29 @@ class SyntaxFmt:
     sb.extend(args)
     for (name, v) in kwargs.items(): sb.append("%s=%s" %(name, v) )
     return ", ".join(sb)
+  @staticmethod
+  def guiAutoExpr(x):
+    from .tkgui import TkWin # never import previor than tkgui imports us
+    def noargNew(t): return fmt.callNew(t, ([],{}))
+    if isinstance(x, Toplevel): return fmt.callNew(Toplevel, (["root"], {}))
+    elif isinstance(x, TkWin): return noargNew(TkWin)
+    return None
   argList = pyArg
   value = repr
+  list = lambda xs: "[%s]" %", ".join(xs)
   assign = lambda name, x: "%s = %s" %(name, x)
-  nameRef = lambda name: name
+  nameRef = lambda name: name   #v add checks for __self__ ?
+  opRef = lambda op: op.__qualname__ if op.__qualname__.replace(".", "").isidentifier() else None #e.g. lambda, check not serious
   call = lambda name, params: "%s(%s)" %(name, SyntaxFmt.argList(params))
-  callNew = lambda qname, params: "%s(%s)" %(qname, SyntaxFmt.argList(params))
-  invoke = lambda recv, op_name, params: "%s.%s(%s)" %(recv, op_name, SyntaxFmt.argList(params))
+  callNew = lambda ty, params: "%s(%s)" %(ty.__qualname__, SyntaxFmt.argList(params))
+  invoke = lambda x, op_name, params: "%s.%s(%s)" %(x, op_name, SyntaxFmt.argList(params))
   setAttr = lambda x, name, v: "%s.%s = %s" %(x, name, v)
   setItem = lambda x, key, v: "%s[%s] = %s" %(x, SyntaxFmt.value(key), v)
-  forEach = lambda x: ("for it in %s: " %(x), "")
-  forEachIndexed = lambda x: ("for (i, it) in %s: " %(x), "")
-  cond = lambda x, a, b: "(%s if %s else %s)" %(a, x, b)
   tfNil = ("True", "False", "None")
+  lineSep = "\n"
+  autoExpr = lambda x: SyntaxFmt.guiAutoExpr(x)
+  specialCaller = "createWidget"
+  defaultNameMap = {}
 fmt = SyntaxFmt
 
 def indexOfLast(p, xs):
@@ -75,26 +84,6 @@ def indexOfLast(p, xs):
     if not p(x): idxPart = idxXs-i +1; break
   return idxPart
 
-class id_dict(dict):
-  '''try to store objects, if not hashable, use its id to force store (but added as non-enumeratable)'''
-  def __init__(self, initial:dict = {}):
-    super().__init__()
-    self._ids = {}
-    for (k, v) in initial.items(): self[k] = v
-  def clear(self): super().clear(); self._ids.clear()
-  def get(self, key):
-    try: return super().get(key)
-    except TypeError: return self._ids.get(id(key))
-  def __getitem__(self, key):
-    try: return super().__getitem__(key)
-    except TypeError: return self._ids[id(key)]
-  def __setitem__(self, key, value):
-    try: return super().__setitem__(key, value)
-    except TypeError: self._ids[id(key)] = value
-  def __delitem__(self, key):
-    try: return super().__delitem__(key)
-    except TypeError: del self._ids[id(key)]
-
 class Codegen:
   '''Python stmt/expression construction&execution result provider,
     so adding side-effects(generate code) besides values are possible.
@@ -102,16 +91,30 @@ class Codegen:
     to provide generated-file-wise argument, use [named] method.
     NOTE: non-flat syntax structures are NOT supported'''
   isEnabled = False
+  useDebug = False
   def __init__(self):
     super().__init__()
     self._sb = []
-    self._names = id_dict()
+    self._names = id_dict(); self._exprs = id_dict()
+    self._autoNamed = id_set()
+    self._constNames = Codegen._initConstNames()
+  @staticmethod
+  def _initConstNames():
     (t,f,nil) = fmt.tfNil
-    self._constName = id_dict({True: t, False:f, None: nil})
-  def write(self, text):
-    print(text)
+    return id_dict({True: t, False:f, None: nil})
+  def clear(self):
+    self._sb = []
+    self._names.clear(); self._exprs.clear()
+    self._autoNamed.clear()
+    self._constNames = Codegen._initConstNames()
+  def write(self, get_text):
+    if not Codegen.isEnabled: return
+    text = get_text()
     if Codegen.isEnabled: self._sb.append(text)
-  def getCode(self): return "".join(self._sb)
+  def getCode(self):
+    code = fmt.lineSep.join(self._sb)
+    if Codegen.useDebug: print(code)
+    return code
 
   @staticmethod
   def nextName(name:str):
@@ -121,46 +124,76 @@ class Codegen:
     else:
       idxNPart = indexOfLast(str.isnumeric, name)
       return "%s%d" %(name[:idxNPart], 1+int(name[idxNPart:]))
+  def _allocName(self, name):
+    qname = name # find, could be tailrec
+    while qname in self._names.values(): qname = Codegen.nextName(qname)
+    return qname
+  def named(self, name, x, is_extern=False):
+    '''this may give an value a name, if [x] is provided before, then [nextName] is used. see [nv]'''
+    self._names[x] = self._allocName(name)
+    if is_extern:
+      assert name not in self._constNames, "extern duplicate: %s" %name
+      self._constNames[x] = name
+    return x
+  def newName(self, name, x):
+    '''give [x] a new name'''
+    self.named(name, x)
+    return self._names.get(x)
+
+  def _nvUnwrap(self, x):
+    if isinstance(x, list): return fmt.list([self.nv(it) for it in x])
+    return None
   def nv(self, x):
-    '''name a expression result'''
-    def nvList():
-      if isinstance(x, list): return [self.nv(it) for it in x]
-      return None
-    return self._constName.get(x) or self._names.get(x) or nvList()
-  def nvr(self, x): return self.nv(x) or fmt.value(x)
+    '''name a expression result, note [named] could not be used twice on the same value,
+      or inconsistence nameRef (e.g. created@callNew foo, re-named to xxx later) will be wrote'''
+    def nameRef():
+      kst = self._constNames.get(x)
+      if kst != None: return kst
+      nam = self._names.get(x)
+      if nam != None: nam = fmt.nameRef(nam)
+      return nam or self._nvUnwrap(x) or fmt.value(x)
+    expr = self._exprs.get(x)
+    if expr == None:
+      expr = fmt.autoExpr(x)
+      if expr != None: self._autoNamed.add(x)
+    if expr != None and expr != "+":
+      name = self._names.get(x)
+      if name == None and (x in self._autoNamed):
+        name = self.newName("%s_1" %type(x).__name__.lower(), x)
+      if name != None: self.write(lambda: fmt.assign(name, expr) )
+      self._exprs[x] = "+"
+    return nameRef()
   def _regResult(self, res, get_code):
     if not Codegen.isEnabled: return
+    if res == None: self.write(get_code); return # python's default func result
     code = get_code()
-    self._names[res] = code
+    self._exprs[res] = code
+    self._autoNamed.add(res)
   def _name(self, args, kwargs):
     '''name those actual param values'''
-    namArgs = [self.nvr(arg) for arg in args]
+    namArgs = [self.nv(arg) for arg in args]
     namKwargs = {}
     for (key, x) in kwargs.items():
-      got = self.nv(x)
-      if got != None: namKwargs[key] = got
-      else:
-        if callable(x): continue
-        namKwargs[key] = fmt.value(x)
+      if callable(x):
+        qname = fmt.opRef(x)
+        if qname != None: namKwargs[key] = qname
+      else: namKwargs[key] = self.nv(x)
     return (namArgs, namKwargs)
+  def defaultName(self, callee, x):
+    return fmt.defaultNameMap.get(callee) or callee
 
-  def named(self, name, x, is_extern=False):
-    '''this may give an value a name, if [x] is provided before, then [nextName] is used'''
-    if not is_extern: print(fmt.assign(name, self.nv(x) or fmt.value(x)))
-    self._names[x] = name if name not in self._names.values() else Codegen.nextName(name)
-    return x
   def call(self, op, *args, **kwargs):
     res = op(*args, **kwargs)
     self._regResult(res, lambda: fmt.call(op, self._name(args, kwargs)))
     return res
   def callNew(self, ctor, *args, **kwargs):
-    qname = ctor.__qualname__
     insta = ctor(*args, **kwargs)
-    self._regResult(insta, lambda: fmt.callNew(qname, self._name(args, kwargs)))
+    self._regResult(insta, lambda: fmt.callNew(ctor, self._name(args, kwargs)))
     tb = extract_stack(limit=3) # determine whatif result is a GUI widget
     (caller, callee) = [it[2] for it in tb[:-1]] #drop this "call"'s frame, get func name(2)
-    if caller == "createWidget":
-      self.named(callee, insta, is_extern=True) # scope[value] may rewrote to new name
+    if caller == fmt.specialCaller:
+      deftName = self.defaultName(callee, insta)
+      if deftName != None: self.named(deftName, insta) # scope[value] may rewrote to new name
     return insta
   def invoke(self, x, op_name, *args, **kwargs):
     res = x.__getattribute__(op_name)(*args, **kwargs)
@@ -168,46 +201,10 @@ class Codegen:
     return res
   def setAttr(self, x, name, v):
     x.__setattr__(name, v)
-    self.write(fmt.setAttr(self.nv(x), name, self.nvr(v)) )
+    self.write(lambda: fmt.setAttr(self.nv(x), name, self.nv(v)) )
   def setItem(self, x, key, v):
     x[key] = v
-    self.write(fmt.setItem(self.nv(x), key, self.nvr(v)) )
-  def forEach(self, x, proc):
-    for it in x: proc(self.named("it", it))
-  def forEachIndexed(self, x, proc):
-    for (i, it) in enumerate(x): proc(self.named("i", i), self.named("it", it))
-  def cond(self, x, a, b):
-    res = a if x else b
-    self.write(fmt.cond(self.nvr(x), self.nvr(a), self.nvr(b)))
-    return res
-
-guiCodegen = Codegen()
-
-class FutureResult:
-  '''pending operation result, use [getValue] / [getValueOr] to wait'''
-  def __init__(self):
-    self._cond = threading.Event()
-    self._value = None
-    self._error = None
-
-  def setValue(self, value):
-    self._value = value
-    self._cond.set()
-
-  def setError(self, exc):
-    self._error = exc
-    self._cond.set()
-
-  def getValueOr(self, on_error):
-    self._cond.wait()
-    if self._error != None: on_error(self._error)
-    return self._value
-  def getValue(self): return self.getValueOr(FutureResult.rethrow)
-  def fold(self, done, fail):
-    self._cond.wait()
-    return done(self._value) if self._error == None else fail(self._error)
-  @staticmethod
-  def rethrow(ex): raise ex
+    self.write(lambda: fmt.setItem(self.nv(x), key, self.nv(v)) )
 
 
 class EventCallback:
@@ -256,6 +253,31 @@ class EventCallback:
         break
     return True
 
+class FutureResult:
+  '''pending operation result, use [getValue] / [getValueOr] to wait'''
+  def __init__(self):
+    self._cond = threading.Event()
+    self._value = None
+    self._error = None
+
+  def setValue(self, value):
+    self._value = value
+    self._cond.set()
+
+  def setError(self, exc):
+    self._error = exc
+    self._cond.set()
+
+  def getValueOr(self, on_error):
+    self._cond.wait()
+    if self._error != None: on_error(self._error)
+    return self._value
+  def getValue(self): return self.getValueOr(FutureResult.rethrow)
+  def fold(self, done, fail):
+    self._cond.wait()
+    return done(self._value) if self._error == None else fail(self._error)
+  @staticmethod
+  def rethrow(ex): raise ex
 
 class EventPoller:
   '''after-event loop operation dispatcher for Tk'''
@@ -302,3 +324,20 @@ class EventPoller:
     future = FutureResult()
     self._call_queue.put((op, args, kwargs, future))
     return future
+
+
+# boilerplates
+class id_dict(dict):
+  '''try to store objects, use its identity to force store unhashable types'''
+  def get(self, key): return super().get(id(key))
+  def __getitem__(self, key): return super().__getitem__(id(key))
+  def __setitem__(self, key, value): return super().__setitem__(id(key), value)
+  def __delitem__(self, key): return super().__delitem__(id(key))
+  def __contains__(self, key): return super().__contains__(id(key))
+class id_set(set):
+  '''same as [id_dict]'''
+  def add(self, value): super().add(id(value))
+  def remove(self, value): super().remove(id(value))
+  def __contains__(self, value): return super().__contains__(id(value))
+
+guiCodegen = Codegen()
