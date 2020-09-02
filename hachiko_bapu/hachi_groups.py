@@ -65,7 +65,7 @@ class GUI(TkGUI):
       _.labeledBox("emmm", _.button("Dangerous", self.run3))
     )
   def run1(self): GUI.Layout1().run("Hello")
-  def run2(self): GUI.SplitWin().run("Split")
+  def run2(self): a=GUI.SplitWin(); a.runCode(a.getCode()) #.run("Split")
   def run3(self): print(self.ta.marker["insert"])
   def setup(self):
     _ = self.underscore

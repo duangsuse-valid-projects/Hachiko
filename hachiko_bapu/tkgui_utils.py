@@ -57,8 +57,8 @@ class SyntaxFmt:
   def guiAutoExpr(x):
     from .tkgui import TkWin # never import previor than tkgui imports us
     def noargNew(t): return fmt.callNew(t, ([],{}))
-    if isinstance(x, Toplevel): return fmt.callNew(Toplevel, (["root"], {}))
-    elif isinstance(x, TkWin): return noargNew(TkWin)
+    if isinstance(x, Toplevel): return noargNew(Toplevel)
+    elif isinstance(x, TkWin): return noargNew(TkWin) # fallback workaround, behaves VERY ugly (spawn useless wins)
     return None
   argList = pyArg
   value = repr
@@ -89,7 +89,7 @@ class Codegen:
     so adding side-effects(generate code) besides values are possible.
     The code generator generally uses value-name substitution,
     to provide generated-file-wise argument, use [named] method.
-    NOTE: non-flat syntax structures are NOT supported'''
+    NOTE: non-flat syntax structures are NOT supported, the result is mainly post-order tree walk'''
   isEnabled = False
   useDebug = False
   def __init__(self):
