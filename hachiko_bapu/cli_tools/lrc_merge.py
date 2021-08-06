@@ -51,7 +51,7 @@ def cfgOrDefault(value, f, x):
 
 
 from re import compile
-PAT_LRC_ENTRY = compile(r"[\[<](\d{2}):(\d{2}).(\d{2})[>\]] ?([^<\n]*)")
+PAT_LRC_ENTRY = compile(r"[\[<](\d{2}):(\d{2}).(\d{2,3})[>\]] ?([^<\n]*)")
 
 sepDeft = lambda line: ("" if all(map(lambda w: len(w) == 1, line)) else " ")
 
@@ -81,7 +81,7 @@ def intoSrt(srts, sep=None):
     words = [srt.content for srt in line]
     return cfgOrDefault(sep, sepDeft, words).join(words)
   time = lambda it: it.start
-  return [Subtitle(i+1, min(line, key=time).start, max(line, key=time).end, newContent(line)) for (i, line) in enumerate(srts)]
+  return [Subtitle(i+1, min(line, key=time).start, min(T1[0].start,max(line, key=time).end), newContent(line)) for ((i, line),(_,T1)) in zipWithNext(list(enumerate(srts)))] #clip <T1
 
 def readLines(name):
   print(f"input {name}, terminated by '.'")
@@ -112,6 +112,6 @@ def main(args = argv[1:]):
   print(intoLrc(result, cfg.sep))
 
   with open(cfg.o, "w+") as srtf:
-    srtf.write(compose(intoSrt(result, cfg.sep)))
+    srtf.write("".join(x.to_srt()for x in intoSrt(result, cfg.sep)))
 
 if __name__ == "__main__": main()
