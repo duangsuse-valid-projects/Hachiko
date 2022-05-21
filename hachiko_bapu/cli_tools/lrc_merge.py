@@ -56,7 +56,7 @@ PAT_LRC_ENTRY = compile(r"[\[<](\d{2}):(\d{2}).(\d{2,3})[>\]] ?([^<\n]*)")
 sepDeft = lambda line: ("" if all(map(lambda w: len(w) == 1, line)) else " ")
 
 def readLrc(text):
-  def readEntry(g): return (int(g[0])*60 + int(g[1]) + int(g[2]) / 100, g[3]) # [mm:ss.xx] content
+  def readEntry(g): return (int(g[0])*60 + int(g[1]) + int(g[2].zfill(3)) / 1000, g[3]) # [mm:ss.xx] content
   return [readEntry(e) for e in PAT_LRC_ENTRY.findall(text)]
 
 def dumpLrc(lrc_lines, sep = None, surr1 = "[]", surr2 = "<>"):
@@ -114,4 +114,5 @@ def main(args = argv[1:]):
   with open(cfg.o, "w+") as srtf:
     srtf.write("".join(x.to_srt()for x in intoSrt(result, cfg.sep)))
 
+#netease http://lrc.opqnext.com/editor/1842025914
 if __name__ == "__main__": main()
